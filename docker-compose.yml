@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  rr-ui:
+    build: .
+    container_name: rr-ui
+    network_mode: host
+    volumes:
+      - ./db:/usr/local/rr-ui/db
+      - ./logs:/usr/local/rr-ui/logs
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    container_name: rr-nginx
+    network_mode: host
+    volumes:
+      - ./web/build:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - rr-ui
+    restart: always

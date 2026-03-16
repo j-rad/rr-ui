@@ -1,0 +1,13 @@
+[Unit]
+Description=rr-ui Control Panel
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/rr-ui/rr-ui run --port 2053
+WorkingDirectory=/usr/local/rr-ui/
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target

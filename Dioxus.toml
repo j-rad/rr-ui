@@ -1,0 +1,19 @@
+[application]
+name = "rr-ui"
+default_platform = "fullstack"
+
+[web.app]
+title = "RR-UI Admin Panel"
+features = ["web"]
+
+[web.watcher]
+reload_html = true
+watch_path = ["src"]
+
+[web.resource]
+dev = { path = "web/static" }
+style = ["layout.css"]
+script = []
+
+[server]
+features = ["server"]

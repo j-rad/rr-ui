@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+// Simplified package name to prevent super::super hell
+package rustray.proxyman;
+
+import "proto/common_serial.proto";
+
+service HandlerService {
+  rpc AddInbound (AddInboundRequest) returns (AddInboundResponse) {}
+  rpc RemoveInbound (RemoveInboundRequest) returns (RemoveInboundResponse) {}
+  rpc AlterInbound (AlterInboundRequest) returns (AlterInboundResponse) {}
+}
+
+message AddInboundRequest { InboundHandlerConfig inbound = 1; }
+message AddInboundResponse {}
+message RemoveInboundRequest { string tag = 1; }
+message RemoveInboundResponse {}
+message AlterInboundRequest {
+  string tag = 1;
+  rustray.common.serial.TypedMessage operation = 2;
+}
+message AlterInboundResponse {}
+
+message InboundHandlerConfig {
+  string tag = 1;
+  rustray.common.serial.TypedMessage receiver_settings = 2;
+  rustray.common.serial.TypedMessage proxy_settings = 3;
+}

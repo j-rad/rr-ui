@@ -1,0 +1,36 @@
+// proto/xray.proto
+syntax = "proto3";
+
+package rustray.core.app.proxyman.command;
+
+service HandlerService {
+  rpc AddInbound (AddInboundRequest) returns (AddInboundResponse) {}
+  rpc RemoveInbound (RemoveInboundRequest) returns (RemoveInboundResponse) {}
+  rpc AlterInbound (AlterInboundRequest) returns (AlterInboundResponse) {}
+}
+
+message AddInboundRequest { InboundHandlerConfig inbound = 1; }
+message AddInboundResponse {}
+message RemoveInboundRequest { string tag = 1; }
+message RemoveInboundResponse {}
+message AlterInboundRequest { string tag = 1; TypedMessage operation = 2; }
+message AlterInboundResponse {}
+
+message InboundHandlerConfig {
+  string tag = 1;
+  TypedMessage receiver_settings = 2;
+  TypedMessage proxy_settings = 3;
+}
+
+message TypedMessage { string type = 1; bytes value = 2; }
+
+service StatsService {
+  rpc GetStats (GetStatsRequest) returns (GetStatsResponse) {}
+  rpc QueryStats (QueryStatsRequest) returns (QueryStatsResponse) {}
+}
+
+message GetStatsRequest { string name = 1; bool reset = 2; }
+message GetStatsResponse { Stat stat = 1; }
+message QueryStatsRequest { string pattern = 1; bool reset = 2; }
+message QueryStatsResponse { repeated Stat stat = 1; }
+message Stat { string name = 1; int64 value = 2; }
