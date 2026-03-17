@@ -1,0 +1,24 @@
+/target
+/web/node_modules
+/web/.svelte-kit
+/web/build
+/web/dist/
+/web-dioxus/target/
+/web-dioxus/dist/
+/web-dioxus/.DS_Store
+
+# Rust artifacts
+*.rlib
+*.a
+*.so
+*.dylib
+*.dll
+*.pdb
+
+# IDEs
+.idea/
+.vscode/
+/web/static/snippets/
+
+# Local data
+/data/
