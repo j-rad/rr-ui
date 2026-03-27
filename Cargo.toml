@@ -3,6 +3,11 @@
 name = "rr-ui"
 version = "2.0.0"
 edition = "2024"
+license = "MIT"
+description = "A dual-mode (Server/Client) configuration and telemetry panel for RustRay censorship circumvention core."
+repository = "https://github.com/j-rad/rr-ui"
+keywords = ["rustray", "censorship-circumvention", "dioxus", "actix-web", "telemetry"]
+categories = ["network-programming", "gui"]
 
 [dependencies]
 # Core dependencies (shared)
@@ -248,3 +253,7 @@ required-features = ["server"]
 [[bench]]
 name = "forensics_bench"
 harness = false
+
+[lints]
+workspace = true
+

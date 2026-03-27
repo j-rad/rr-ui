@@ -69,6 +69,7 @@ where
     }
 }
 
+#[allow(clippy::ptr_arg)]
 fn is_cow_empty_str(c: &Cow<'_, str>) -> bool {
     c.is_empty()
 }
@@ -287,8 +288,10 @@ pub struct RealtimeTelemetry {
 
 /// Flow types for XTLS/Vision
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum FlowType {
     #[serde(rename = "")]
+    #[default]
     None,
     #[serde(rename = "xtls-rprx-vision")]
     XtlsRprxVision,
@@ -298,11 +301,6 @@ pub enum FlowType {
     Other(String),
 }
 
-impl Default for FlowType {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// Post-Quantum Cryptography Matrix (Algorithm Levels)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -337,20 +335,21 @@ pub enum InboundProtocol {
     Tun,
 }
 
-impl ToString for InboundProtocol {
-    fn to_string(&self) -> String {
-        match self {
-            InboundProtocol::Vless => "vless".to_string(),
-            InboundProtocol::Vmess => "vmess".to_string(),
-            InboundProtocol::Trojan => "trojan".to_string(),
-            InboundProtocol::Shadowsocks => "shadowsocks".to_string(),
-            InboundProtocol::Socks => "socks".to_string(),
-            InboundProtocol::Http => "http".to_string(),
-            InboundProtocol::WireGuard => "wireguard".to_string(),
-            InboundProtocol::Dokodemo => "dokodemo-door".to_string(),
-            InboundProtocol::FlowJ => "flowj".to_string(),
-            InboundProtocol::Tun => "tun".to_string(),
-        }
+impl std::fmt::Display for InboundProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            InboundProtocol::Vless => "vless",
+            InboundProtocol::Vmess => "vmess",
+            InboundProtocol::Trojan => "trojan",
+            InboundProtocol::Shadowsocks => "shadowsocks",
+            InboundProtocol::Socks => "socks",
+            InboundProtocol::Http => "http",
+            InboundProtocol::WireGuard => "wireguard",
+            InboundProtocol::Dokodemo => "dokodemo-door",
+            InboundProtocol::FlowJ => "flowj",
+            InboundProtocol::Tun => "tun",
+        };
+        write!(f, "{}", s)
     }
 }
 
@@ -470,6 +469,7 @@ pub struct WireguardPeer {
 /// Active connection information
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct Connection {
     pub ip: String,
     pub domain: String,
@@ -493,22 +493,6 @@ pub struct Connection {
     pub download_speed: Option<u64>,
 }
 
-impl Default for Connection {
-    fn default() -> Self {
-        Self {
-            ip: String::new(),
-            domain: String::new(),
-            protocol: String::new(),
-            duration: 0,
-            latency: 0,
-            id: None,
-            inbound_tag: None,
-            email: None,
-            upload_speed: None,
-            download_speed: None,
-        }
-    }
-}
 
 /// Sniffer event types for connection monitoring
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -893,17 +877,14 @@ pub struct DokodemoSettings {
 /// DNS server type
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum DnsServerType {
+    #[default]
     Udp,
     Tcp,
     Doh,
 }
 
-impl Default for DnsServerType {
-    fn default() -> Self {
-        Self::Udp
-    }
-}
 
 /// DNS server configuration
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -944,6 +925,7 @@ pub struct DnsConfig {
 /// Discriminated union for all protocol-specific settings
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "protocol", content = "settings", rename_all = "camelCase")]
+#[allow(clippy::large_enum_variant)]
 pub enum ProtocolSettings<'a> {
     Vless(VlessSettings<'a>),
     Vmess(VmessSettings),
@@ -1164,61 +1146,52 @@ pub struct StreamSettings<'a> {
 
 impl<'a> StreamSettings<'a> {
     pub fn total_sni(&self) -> Option<String> {
-        if let Some(ref r) = self.reality_settings {
-            if let Some(first) = r.server_names.first() {
+        if let Some(ref r) = self.reality_settings
+            && let Some(first) = r.server_names.first() {
                 return Some(first.to_string());
             }
-        }
-        if let Some(ref t) = self.tls_settings {
-            if !t.server_name.is_empty() {
+        if let Some(ref t) = self.tls_settings
+            && !t.server_name.is_empty() {
                 return Some(t.server_name.to_string());
             }
-        }
         None
     }
 
     pub fn total_fingerprint(&self) -> Option<String> {
-        if let Some(ref r) = self.reality_settings {
-            if !r.fingerprint.is_empty() {
+        if let Some(ref r) = self.reality_settings
+            && !r.fingerprint.is_empty() {
                 return Some(r.fingerprint.to_string());
             }
-        }
-        if let Some(ref t) = self.tls_settings {
-            if let Some(ref f) = t.fingerprint {
+        if let Some(ref t) = self.tls_settings
+            && let Some(ref f) = t.fingerprint {
                 return Some(f.to_string());
             }
-        }
         None
     }
 
     pub fn total_short_id(&self) -> Option<String> {
-        if let Some(ref r) = self.reality_settings {
-            if let Some(first) = r.short_ids.first() {
+        if let Some(ref r) = self.reality_settings
+            && let Some(first) = r.short_ids.first() {
                 return Some(first.to_string());
             }
-        }
         None
     }
 
     pub fn total_host(&self) -> Option<String> {
-        if let Some(ref w) = self.ws_settings {
-            if let Some(headers) = &w.headers {
-                if let Some(host) = headers.get("Host") {
+        if let Some(ref w) = self.ws_settings
+            && let Some(headers) = &w.headers
+                && let Some(host) = headers.get("Host") {
                     return host.as_str().map(|s| s.to_string());
                 }
-            }
-        }
-        if let Some(ref h) = self.http_settings {
-            if let Some(hosts) = &h.host {
-                if let Some(first) = hosts.first() {
+        if let Some(ref h) = self.http_settings
+            && let Some(hosts) = &h.host
+                && let Some(first) = hosts.first() {
                     return Some(first.to_string());
                 }
-            }
-        }
-        if let Some(ref t) = self.tcp_settings {
-            if let Some(req) = &t.request {
-                if let Some(headers) = req.get("headers") {
-                    if let Some(host) = headers.get("Host") {
+        if let Some(ref t) = self.tcp_settings
+            && let Some(req) = &t.request
+                && let Some(headers) = req.get("headers")
+                    && let Some(host) = headers.get("Host") {
                         if let Some(arr) = host.as_array() {
                             if let Some(first) = arr.first() {
                                 return first.as_str().map(|s| s.to_string());
@@ -1227,26 +1200,21 @@ impl<'a> StreamSettings<'a> {
                             return Some(s.to_string());
                         }
                     }
-                }
-            }
-        }
         None
     }
 
     pub fn total_path(&self) -> Option<String> {
-        if let Some(ref w) = self.ws_settings {
-            if let Some(ref p) = w.path {
+        if let Some(ref w) = self.ws_settings
+            && let Some(ref p) = w.path {
                 return Some(p.to_string());
             }
-        }
-        if let Some(ref h) = self.http_settings {
-            if let Some(ref p) = h.path {
+        if let Some(ref h) = self.http_settings
+            && let Some(ref p) = h.path {
                 return Some(p.to_string());
             }
-        }
-        if let Some(ref t) = self.tcp_settings {
-            if let Some(req) = &t.request {
-                if let Some(path) = req.get("path") {
+        if let Some(ref t) = self.tcp_settings
+            && let Some(req) = &t.request
+                && let Some(path) = req.get("path") {
                     if let Some(arr) = path.as_array() {
                         if let Some(first) = arr.first() {
                             return first.as_str().map(|s| s.to_string());
@@ -1255,17 +1223,14 @@ impl<'a> StreamSettings<'a> {
                         return Some(s.to_string());
                     }
                 }
-            }
-        }
         None
     }
 
     pub fn total_alpn(&self) -> Option<String> {
-        if let Some(ref t) = self.tls_settings {
-            if !t.alpn.is_empty() {
+        if let Some(ref t) = self.tls_settings
+            && !t.alpn.is_empty() {
                 return Some(t.alpn.to_string());
             }
-        }
         None
     }
 }

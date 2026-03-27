@@ -1,123 +1,82 @@
-# rr-ui
+# rr-ui 🛡️
 
-A dual-mode (Server/Client) Xray panel solution built with Rust, Actix-Web, and Dioxus. Now with dual-core support for both Xray and RustRay.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
+[![Dioxus](https://img.shields.io/badge/UI-Dioxus-blue.svg)](https://dioxuslabs.com)
 
+A **High-Performance, Dual-Mode Configuration & Telemetry Panel** built entirely in Rust. `rr-ui` is the visual orchestrator for the **RustRay** censorship circumvention core, designed for both enterprise-grade servers and resource-constrained OpenWrt routers.
 
-*Installs the panel, creates the service, and enables it on port 2053.*
+---
 
-## Project Overview
+## 🌟 Project Overview
 
-This project provides a secure, performant, and maintainable UI for managing Xray-compatible cores. It supports two modes of operation:
+`rr-ui` serves as the visual command center for the EdgeRay/RustRay ecosystem. It operates in two specialized modes:
 
-1.  **Server Mode**: Full-featured panel for managing users, inbounds, routing, and certificates on a server. Uses SurrealDB for persistence.
-2.  **Client Mode**: Lightweight configuration interface for OpenWrt or embedded devices to manage outbound connections. Uses file-based storage to minimize dependencies.
+1.  **Server Mode**: A full-featured administrative panel for user management, P2P link generation, and geo-routing orchestration. Backed by **SurrealDB**.
+2.  **Client Mode**: A lightweight, minimal-footprint interface tailored for OpenWrt routers, IoT hubs, and embedded devices.
 
-### New Features
+### 🚀 Core Features
 
-*   **Dual-Core Support**: Seamlessly switch between **Xray-core** and **RustRay** from the settings page.
-*   **Modern UI/UX**: A complete visual overhaul featuring a responsive design, dark mode, and glassmorphism effects.
-*   **Enhanced Performance & Reliability**: Optimized background jobs and robust connection handling with exponential backoff.
-*   **Comprehensive API**: Expanded API for managing routing, backups, Telegram bots, and more.
+*   **P2P Orchestration**: Visually manage BLAKE3 authenticated peer-to-peer links and decentralized rings.
+*   **Dynamic Routing**: Map primary transports (e.g., Brutal-QUIC) with autonomous fallback logic via gRPC.
+*   **Live Telemetry**: Sub-millisecond connection health and throughput metrics via a self-healing UDS manager.
+*   **Obsidian Design System**: A premium, GPU-accelerated interface featuring glassmorphism and real-world telemetry overlays.
+*   **SIP003 Supervison**: Integrated support for legacy SIP003 UDP-over-TCP wrappers.
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-*   **Backend**: Rust (Actix-Web)
-*   **Database**: SurrealDB (Embedded RocksDB) for Server Mode; File System for Client Mode.
-*   **Frontend**: SvelteKit + TailwindCSS
-*   **Communication**: gRPC (for controlling the Xray/RustRay Core)
+*   **UI Framework**: [Dioxus](https://dioxuslabs.com) (Fullstack Rust)
+*   **Web Server**: [Actix-Web](https://actix.rs)
+*   **Database**: SurrealDB (Server mode) / Local Flat-file (Client mode)
+*   **IPC**: gRPC over Unix Domain Sockets (UDS)
+*   **Style**: Vanilla CSS with the Obsidian design system
 
-## Setup & Run Instructions
+## ⚙️ Setup & Development
 
 ### Prerequisites
+*   [Rust](https://rustup.rs/) (Stable/Nightly)
+*   [Dioxus CLI](https://dioxuslabs.com/learn/0.6/getting_started) (`cargo install dioxus-cli`)
 
-*   Rust (latest stable)
-*   Node.js & npm (for frontend)
-*   Protobuf Compiler (`protoc`)
-*   Xray Core or RustRay binary installed/available in path.
+### Running the Project
 
-### Backend
-
-To build the project, use one of the following commands:
-
-**Server Mode (Default):**
-
+**1. Server Mode (Full Features):**
 ```bash
-cargo build --release --features server
+cargo run --features server -- run
 ```
 
-**Client Mode (Lightweight):**
-
+**2. Development with Hot Reload:**
 ```bash
-cargo build --release
+dx serve
 ```
 
-**Running:**
-
+### 🧪 Testing
+We maintain high standards for production readiness. Always run the test suite before contributing:
 ```bash
-./target/release/rr-ui run --port 54321
+./run_tests.sh ci
 ```
 
-### Frontend
+## 🗺️ Roadmap & Production Readiness
 
-The frontend is a SvelteKit app located in `web/`.
+We are currently in **Phase 7** of implementation. Our goal for **v1.0 (Production Ready)** includes:
+- [ ] 100% Code Coverage for core routing logic.
+- [ ] Automated security audits of the gRPC/UDS bridge.
+- [ ] Full support for mobile-responsive EdgeRay clients.
+- [ ] Decentralized signaling for PQC-resistant handshakes.
 
-```bash
-cd web
-pnpm install
-pnpm run build
-```
+See [ROADMAP.md](./ROADMAP.md) for the full vision.
 
-The build artifacts (`web/build`) are served by the backend.
+## 🤝 Contributing
 
-## API Endpoint Summary
+We ❤️ open-source contributors! Whether you're fixing a bug, improving documentation, or adding a new transport visualization, we welcome your PRs.
 
-All API routes are prefixed with `/panel/api`. Protected routes require a JWT token in the `Authorization: Bearer <token>` header.
+1.  Check out our [CONTRIBUTING.md](./CONTRIBUTING.md) for setup guides.
+2.  Read our [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
+3.  Ensure your code passes `./run_tests.sh clippy`.
 
-### Public Routes
+## 🔒 Security
 
-*   `POST /login`: Authenticate and receive a JWT.
-*   `GET /sub`: Get subscription content for clients.
+For security vulnerabilities, please refer to [SECURITY.md](./SECURITY.md). **Do not open public issues for security exploits.**
 
-### Common Routes (Server & Client)
+## 📄 License
 
-*   **System & Core**:
-    *   `GET /server/status`: Get system resource usage (CPU, RAM, Disk).
-    *   `GET /server/mode`: Get current application mode ("server" or "client").
-    *   `GET /server/xray/status`: Check Xray/RustRay core status.
-    *   `POST /server/xray/restart`: Restart the core.
-    *   `POST /server/xray/stop`: Stop the core.
-*   **Settings**:
-    *   `GET /setting`: Get all settings.
-    *   `POST /setting`: Update a setting.
-*   **Client Traffic**:
-    *   `GET /client/traffic`: Get traffic stats for the current user.
-    *   `POST /client/reset_traffic`: Reset traffic for the current user.
-
-### Server-Only Routes
-
-*   **Inbounds**:
-    *   `GET /inbounds`: List all inbounds.
-    *   `POST /inbounds`: Add a new inbound.
-    *   `PUT /inbounds`: Update an inbound.
-    *   `DELETE /inbounds`: Delete an inbound.
-*   **Routing**:
-    *   `GET /routing`: List all routing rules.
-    *   `POST /routing`: Add a new rule.
-    *   `DELETE /routing`: Delete a rule.
-*   **Backups**:
-    *   `GET /backup/export`: Export the database.
-    *   `POST /backup/import`: Import a database backup.
-*   **Certificates**:
-    *   `POST /cert/issue`: Issue a new SSL certificate.
-*   **Telegram Bot**:
-    *   `GET /tgbot`: Get Telegram bot configuration.
-    *   `POST /tgbot`: Update Telegram bot configuration.
-    *   `POST /tgbot/test`: Test the bot connection.
-*   **WARP**:
-    *   `GET /warp/status`: Get WARP status.
-    *   `POST /warp/register`: Register a new WARP account.
-
-
-### test local
-*   **Test**:
-    *   cargo run --profile release --bin rr-ui -- run --port 2053
+This project is licensed under the **MIT License**. See the [LICENSE](./LICENSE) file for details.

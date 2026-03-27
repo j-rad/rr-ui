@@ -16,15 +16,19 @@ fn test_secret_serialization() {
     // 2. Test AllSetting serialization (to DB/API)
     // We expect it to be EXPOSED because we use custom serializer,
     // assuming we want to save it to DB or send to authorized API client.
-    let mut settings = AllSetting::default();
-    settings.two_factor_secret = Some("mfa_secret_key".to_string());
+    let settings = AllSetting {
+        two_factor_secret: Some("mfa_secret_key".to_string()),
+        ..Default::default()
+    };
 
     let serialized = serde_json::to_string(&settings).unwrap();
     assert!(serialized.contains("mfa_secret_key")); // Must be exposed for storage/API
 
     // 3. Test Client serialization
-    let mut client = Client::default();
-    client.password = Some("trojan_pass".to_string());
+    let client = Client {
+        password: Some("trojan_pass".to_string()),
+        ..Default::default()
+    };
     let serialized_client = serde_json::to_string(&client).unwrap();
     assert!(serialized_client.contains("trojan_pass"));
 }
