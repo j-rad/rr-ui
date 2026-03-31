@@ -29,8 +29,12 @@ pub fn LogsPage() -> Element {
                 } else {
                     "ERROR".to_string()
                 },
-                message: event.message.clone(),
-                details: format!("User: {}, IP: {}", event.user_id, event.ip_address),
+                message: format!("{:?}", event.action),
+                details: format!(
+                    "User: {}, IP: {}",
+                    event.user.as_deref().unwrap_or("Unknown"),
+                    event.ip_address.as_deref().unwrap_or("Unknown")
+                ),
             })
             .collect(),
         None => vec![],

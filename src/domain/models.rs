@@ -335,9 +335,9 @@ pub enum InboundProtocol {
     Tun,
 }
 
-impl std::fmt::Display for InboundProtocol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
+impl InboundProtocol {
+    pub fn as_str(&self) -> &'static str {
+        match self {
             InboundProtocol::Vless => "vless",
             InboundProtocol::Vmess => "vmess",
             InboundProtocol::Trojan => "trojan",
@@ -348,8 +348,13 @@ impl std::fmt::Display for InboundProtocol {
             InboundProtocol::Dokodemo => "dokodemo-door",
             InboundProtocol::FlowJ => "flowj",
             InboundProtocol::Tun => "tun",
-        };
-        write!(f, "{}", s)
+        }
+    }
+}
+
+impl std::fmt::Display for InboundProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -412,7 +417,7 @@ pub struct Client {
     pub level: Option<u32>,
     /// The ID of the reseller who created this client (scoping)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub created_by: Option<i64>,
+    pub created_by: Option<String>,
     /// Capture any extra fields for forward compatibility
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,

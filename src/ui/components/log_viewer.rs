@@ -11,6 +11,7 @@ pub struct LogEntry {
     pub timestamp: String,
     pub level: String,
     pub message: String,
+    pub details: String,
 }
 
 #[derive(Props, Clone, PartialEq)]

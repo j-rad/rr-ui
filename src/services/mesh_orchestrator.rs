@@ -209,14 +209,19 @@ impl MeshOrchestrator {
 
                 let channel_result = match Channel::from_shared(url) {
                     Ok(endpoint) => {
-                        endpoint
-                            .tls_config(tls)
-                            .unwrap_or_else(|e| e)
-                            .timeout(Duration::from_secs(2))
-                            .connect()
-                            .await
+                        match endpoint.tls_config(tls) {
+                            Ok(ep) => {
+                                ep.timeout(Duration::from_secs(2))
+                                    .connect()
+                                    .await
+                            }
+                            Err(e) => Err(e),
+                        }
                     }
-                    Err(_) => return,
+                    Err(e) => {
+                        log::error!("Invalid URL for node {}: {}", node.node_id, e);
+                        return;
+                    }
                 };
 
                 let channel = match channel_result {

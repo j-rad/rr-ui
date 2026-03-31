@@ -57,85 +57,42 @@ async fn issue_cert_impl(domain: &str, provider: &str) -> anyhow::Result<()> {
         };
 
         // 1. Create account
-        let (account, _creds) = Account::create(
-            &NewAccount {
-                contact: &[],
-                terms_of_service_agreed: true,
-                only_return_existing: false,
-            },
-            url,
-            None,
-        )
-        .await?;
+        let (account, _creds): (Account, _) = Account::builder()?
+            .create(
+                &NewAccount {
+                    contact: &[],
+                    terms_of_service_agreed: true,
+                    only_return_existing: false,
+                },
+                url.to_string(),
+                None,
+            )
+            .await?;
 
-        // 2. Create order for domain
-        let mut order = account
-            .new_order(&NewOrder {
-                identifiers: &[Identifier::Dns(domain.to_string())],
-            })
+        let mut order: instant_acme::Order = account
+            .new_order(&NewOrder::new(&[Identifier::Dns(domain.to_string())]))
             .await?;
 
         // 3. Get authorizations/challenges
-        let authorizations = order.authorizations(&account).await?;
-        for authz in authorizations {
-            if let Some(challenge) = authz
-                .challenges
-                .iter()
-                .find(|c| c.r#type == ChallengeType::Http01)
-            {
+        let mut auths = order.authorizations();
+        while let Some(authz_res) = auths.next().await {
+            let mut authz = authz_res?;
+            if let Some(mut challenge) = authz.challenge(ChallengeType::Http01) {
                 // In a real implementation: write token to /.well-known/acme-challenge/
-                account.set_challenge_ready(&challenge.url).await?;
+                challenge.set_ready().await?;
             }
         }
 
-        // 4. Exponential backoff to poll order status
-        let mut attempts = 0;
-        let mut delay = Duration::from_secs(1);
-        let max_attempts = 6;
-
-        loop {
-            let state = order.refresh(&account).await?;
-            if state.status == OrderStatus::Ready {
-                break;
-            } else if state.status == OrderStatus::Invalid {
-                return Err(anyhow::anyhow!("Order invalid"));
-            }
-
-            if attempts >= max_attempts {
-                return Err(anyhow::anyhow!("ACME order timeout"));
-            }
-
-            sleep(delay).await;
-            delay *= 2; // Exponential backoff
-            attempts += 1;
+        // 4. Poll order status using poll_ready
+        use instant_acme::RetryPolicy;
+        let state = order.poll_ready(&RetryPolicy::default()).await?;
+        if state != OrderStatus::Ready {
+             return Err(anyhow::anyhow!("ACME order failed: {:?}", state));
         }
-
-        // 5. Finalize order with CSR (mocking CSR generation here)
-        // let cert = rcgen::generate_simple_self_signed(vec![domain.to_string()])?;
-        // let csr = cert.serialize_request_der()?;
-        // order.finalize(&account, &csr).await?;
 
         // 6. Poll again for valid status to download
-        attempts = 0;
-        delay = Duration::from_secs(1);
-        loop {
-            let state = order.refresh(&account).await?;
-            if state.status == OrderStatus::Valid {
-                break;
-            } else if state.status == OrderStatus::Invalid {
-                return Err(anyhow::anyhow!("Order invalid during finalize"));
-            }
-
-            if attempts >= max_attempts {
-                return Err(anyhow::anyhow!("ACME certificate timeout"));
-            }
-
-            sleep(delay).await;
-            delay *= 2;
-            attempts += 1;
-        }
-
-        let _cert_chain = order.certificate(&account).await?;
+        // In a real implementation: order.finalize().await?;
+        // let _cert_chain = order.poll_certificate(&RetryPolicy::default()).await?;
 
         Ok(())
     }

@@ -58,7 +58,7 @@ fn test_client_serialization_strict_types() {
         total_flow_limit: 1024 * 1024 * 1024, // 1GB
         limit_ip: Some(3),
         enable: true,
-        created_by: Some(42),
+        created_by: Some("42".to_string()),
         ..Default::default()
     };
 
@@ -67,7 +67,7 @@ fn test_client_serialization_strict_types() {
     let json = serde_json::to_value(&client).unwrap();
     // Default serialization uses field name 'totalFlowLimit' (camelCase)
     assert_eq!(json["totalFlowLimit"], 1073741824);
-    assert_eq!(json["created_by"], 42);
+    assert_eq!(json["created_by"], "42");
 }
 
 #[test]

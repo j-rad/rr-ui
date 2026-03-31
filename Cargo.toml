@@ -50,7 +50,7 @@ futures-util = "0.3"
 instant-acme = { version = "0.8.4", optional = true }
 rcgen = { version = "0.14.7", optional = true }
 surrealdb = { version = "2.0.5", features = ["kv-surrealkv"], optional = true }
-tonic = { version = "0.14", default-features = true, features = ["transport"], optional = true }
+tonic = { version = "0.14", default-features = true, features = ["transport", "tls-webpki-roots"], optional = true }
 prost = { version = "0.14", optional = true }
 tonic-prost = { version = "0.14.5", optional = true }
 mime_guess = { version = "2.0", optional = true }

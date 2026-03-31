@@ -281,6 +281,7 @@ pub fn InboundsPage() -> Element {
                     password: None,
                     up_speed_limit: 0,
                     down_speed_limit: 0,
+                    created_by: None,
                 }),
                 inbound: Some(crate::domain::models::Inbound {
                     id: None,

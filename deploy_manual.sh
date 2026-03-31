@@ -7,7 +7,7 @@ set -e
 # Configuration
 BINARY_NAME="rr-ui"
 RUSTRAY_BINARY="rustray_core/rustray/rustray"
-LOCAL_BINARY_PATH="./target/release/$BINARY_NAME"
+LOCAL_BINARY_PATH="../target/release/$BINARY_NAME"
 WEB_DIR="./web"
 
 # UI Configuration
@@ -60,7 +60,7 @@ log_info "Starting Native RustRay Deployment to $SERVER_DEST"
 log_info "Verifying RustRay binary..."
 if [ ! -f "$RUSTRAY_BINARY" ]; then
     log_error "RustRay binary not found at $RUSTRAY_BINARY"
-    log_info "Please build RustRay first: cd rustray_core && cargo build --release"
+    log_info "Please build RustRay first: cd rustray_core && cargo build --release --offline"
     exit 1
 fi
 
@@ -84,7 +84,7 @@ if [ "$USE_DIOXUS_UI" = "true" ]; then
     
     # A. Build Client (Wasm)
     log_info "Compiling WASM..."
-    cargo build --target wasm32-unknown-unknown --features web --release --no-default-features
+    cargo build --target wasm32-unknown-unknown --features web --release --no-default-features --offline
     
     log_info "Running wasm-bindgen..."
     mkdir -p web/static
@@ -95,9 +95,9 @@ if [ "$USE_DIOXUS_UI" = "true" ]; then
     # B. Build Server Binary (x86_64)
     log_info "Building Dioxus Server Binary..."
     # Ensure server feature is enabled which bundles the web/static assets
-    cargo build --release --bin rr-ui --features "server"
+    cargo build --release --bin rr-ui --features "server" --offline
     
-    CLI_BINARY_PATH="./target/release/rr-ui"
+    CLI_BINARY_PATH="../target/release/rr-ui"
 else
     # Standard Static Web Build (Vue/Svelte/etc)
     log_info "Building Static Web Frontend..."
@@ -117,7 +117,7 @@ else
     
     # Standard Server Build
     log_info "Building Backend (Release with Server features)..."
-    cargo build --release --bin rr-ui --features "server"
+    cargo build --release --bin rr-ui --features "server" --offline
     CLI_BINARY_PATH="./target/release/rr-ui"
 fi
 
