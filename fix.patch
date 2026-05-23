@@ -1,0 +1,69 @@
+--- a/src/services/billing_delta.rs
++++ b/src/services/billing_delta.rs
+@@ -82,43 +82,27 @@
+
+         info!("Syncing {} traffic deltas to database...", updates.len());
+
+-        let mut tasks = tokio::task::JoinSet::new();
+-        // Limit concurrency to avoid overloading the DB
+-        let semaphore = Arc::new(tokio::sync::Semaphore::new(50));
+-
+-        for ((tag, email), delta) in updates {
+-            let client_clone = self.db.client.clone();
+-            let sem_clone = semaphore.clone();
+-
+-            tasks.spawn(async move {
+-                let _permit = sem_clone.acquire().await.unwrap_or_else(|_| unreachable!());
+-                // optimized SurrealDB update using atomic increments
+-                // This query finds the user in the clients array and updates their traffic counters.
+-                // It uses the += operator for atomic persistence without read-modify-write cycles.
+-                let query = "
+-                    UPDATE inbound
+-                    SET settings.clients[WHERE email = $email].up += $up,
+-                        settings.clients[WHERE email = $email].down += $down
+-                    WHERE tag = $tag;
+-                ";
+-
+-                let vars = serde_json::json!({
+-                    "tag": tag,
+-                    "email": email,
+-                    "up": delta.up,
+-                    "down": delta.down,
+-                });
+-
+-                if let Err(e) = client_clone.query(query).bind(vars).await {
+-                    error!("Atomic billing sync failed for user {} in tag {}: {}", email, tag, e);
+-                    // In production, we might want to put these back in a retry buffer
+-                }
+-            });
+-        }
+-
+-        while let Some(res) = tasks.join_next().await {
+-            if let Err(e) = res {
+-                error!("Task execution failed during billing delta sync: {}", e);
+-            }
++        let mut query_string = String::from("BEGIN TRANSACTION;\n");
++        let mut vars = serde_json::Map::new();
++
++        for (i, ((tag, email), delta)) in updates.into_iter().enumerate() {
++            query_string.push_str(&format!(
++                "UPDATE inbound
++                 SET settings.clients[WHERE email = $email_{i}].up += $up_{i},
++                     settings.clients[WHERE email = $email_{i}].down += $down_{i}
++                 WHERE tag = $tag_{i};\n"
++            ));
++            vars.insert(format!("tag_{i}"), serde_json::json!(tag));
++            vars.insert(format!("email_{i}"), serde_json::json!(email));
++            vars.insert(format!("up_{i}"), serde_json::json!(delta.up));
++            vars.insert(format!("down_{i}"), serde_json::json!(delta.down));
+         }
+
++        query_string.push_str("COMMIT TRANSACTION;");
++
++        if let Err(e) = self.db.client.query(query_string).bind(serde_json::Value::Object(vars)).await {
++            error!("Atomic billing sync batch failed: {}", e);
++        }
++
+         Ok(())
+     }
+ }

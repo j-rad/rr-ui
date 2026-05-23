@@ -1,0 +1,28 @@
+{
+  "name": "rr-ui",
+  "version": "1.0.0",
+  "description": "[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org) [![Dioxus](https://img.shields.io/badge/UI-Dioxus-blue.svg)](https://dioxuslabs.com)",
+  "main": "tailwind.config.js",
+  "directories": {
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FaezBarghasa/rr-ui.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/FaezBarghasa/rr-ui/issues"
+  },
+  "homepage": "https://github.com/FaezBarghasa/rr-ui#readme",
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}

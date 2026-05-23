@@ -1,0 +1,123 @@
+name: Release Production
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: x86_64
+            use_cross: true
+          - target: aarch64-unknown-linux-musl
+            arch: aarch64
+            use_cross: true
+          - target: mips-unknown-linux-musl
+            arch: mips
+            use_cross: true
+          - target: mipsel-unknown-linux-musl
+            arch: mipsel
+            use_cross: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            protobuf-compiler \
+            libprotobuf-dev \
+            libelf-dev \
+            clang \
+            llvm \
+            pkg-config \
+            libssl-dev \
+            nftables
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Core (All Features)
+        # Verifies compilation for the entire evasion matrix
+        run: cargo build --verbose --features "ebpf quic masque cdn_loop stego shaping"
+
+      - name: Run Core Logic Tests
+        run: cargo test --verbose --lib --bins
+
+      - name: Install Cross
+        if: matrix.use_cross
+        run: |
+          cargo install cross --locked
+          # mips/mipsel might require specific cross configuration or docker images if default cross doesn't support them perfectly,
+          # but cross usually handles unknown-linux-musl well.
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Frontend
+        run: |
+          cd web
+          npm install
+          npm run build
+          # Remove node_modules to save space/time if needed, but not strictly necessary here
+
+      - name: Build Backend
+        run: |
+          CMD="cargo"
+          if [[ "${{ matrix.use_cross }}" == "true" ]]; then
+            CMD="cross"
+          fi
+
+          echo "Building backend for ${{ matrix.target }}..."
+          $CMD build --release --features server --target ${{ matrix.target }}
+
+      - name: Package Assets
+        run: |
+          # Prepare staging directory
+          mkdir -p staging/web
+
+          # Copy binary
+          cp target/${{ matrix.target }}/release/rr-ui staging/rr-ui
+
+          # Note: Frontend is embedded in the binary via rust-embed, so no need to copy web/build separately.
+          # We only need the binary and the geo-files.
+
+          # Copy GeoIP/GeoSite data
+          # Ensuring we pull from rustray/assets as identified
+          cp rustray/assets/geoip.dat staging/
+          cp rustray/assets/geosite.dat staging/
+
+          # Create archive
+          cd staging
+          TAR_NAME="../rr-ui-${{ github.ref_name }}-${{ matrix.arch }}.tar.gz"
+          tar -czf $TAR_NAME .
+
+          # Generate checksum
+          cd ..
+          sha256sum "rr-ui-${{ github.ref_name }}-${{ matrix.arch }}.tar.gz" > "rr-ui-${{ github.ref_name }}-${{ matrix.arch }}.tar.gz.sha256"
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            rr-ui-${{ github.ref_name }}-${{ matrix.arch }}.tar.gz
+            rr-ui-${{ github.ref_name }}-${{ matrix.arch }}.tar.gz.sha256
+          generate_release_notes: true

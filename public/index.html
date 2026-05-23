@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>EdgeRay // Tactical Dashboard</title>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="EdgeRay Tactical Dashboard — Real-time VPN and proxy management panel.">
+    <!-- No <base> tag: all asset paths are absolute so no base tag is needed.
+         A base tag with /panel/ would break sub-path relative resolution for
+         resources that are served from the root (/wasm/, /assets/, etc.). -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self';
+                   script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline';
+                   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+                   font-src 'self' https://fonts.gstatic.com data:;
+                   connect-src 'self' ws: wss:;
+                   img-src 'self' data:;
+                   frame-ancestors 'none';">
+    <style>
+        /* --- Zero-dependency pre-hydration shell ---
+           Shown until WASM initializes and Dioxus mounts.
+           The .loaded class is added by the init promise below. */
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; height: 100%; }
+        body {
+            background-color: #030712;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Inter', system-ui, sans-serif;
+            color: #f8fafc;
+            overflow: hidden;
+        }
+
+        #hydration-shell {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.75rem;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
+        }
+
+        /* Hide shell once WASM is live */
+        body.wasm-ready #hydration-shell {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* Tactical spinner */
+        .er-spinner {
+            position: relative;
+            width: 56px;
+            height: 56px;
+        }
+        .er-spinner-outer {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 3px solid rgba(34, 211, 238, 0.12);
+        }
+        .er-spinner-inner {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            border-top-color: #22d3ee;
+            animation: er-spin 0.9s linear infinite;
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.35);
+        }
+        @keyframes er-spin { to { transform: rotate(360deg); } }
+
+        .er-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #475569;
+        }
+
+        .er-dots {
+            display: flex;
+            gap: 6px;
+        }
+        .er-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: rgba(34, 211, 238, 0.4);
+            animation: er-pulse 1.4s ease-in-out infinite;
+        }
+        .er-dot:nth-child(2) { animation-delay: 0.2s; }
+        .er-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes er-pulse {
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            50%       { opacity: 1;   transform: scale(1.1); }
+        }
+
+        /* Error state */
+        #hydration-error {
+            display: none;
+            max-width: 380px;
+            padding: 1.25rem 1.5rem;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            border-radius: 12px;
+            color: #fca5a5;
+            font-size: 0.8rem;
+            font-family: monospace;
+            text-align: center;
+            line-height: 1.6;
+        }
+        body.wasm-error #hydration-error { display: block; }
+        body.wasm-error #hydration-shell { display: none; }
+    </style>
+</head>
+<body>
+    <!-- Dioxus mounts into #main; the shell fades out once WASM is live. -->
+    <div id="main"></div>
+
+    <div id="hydration-shell" aria-live="polite" aria-label="Loading application">
+        <div class="er-spinner">
+            <div class="er-spinner-outer"></div>
+            <div class="er-spinner-inner"></div>
+        </div>
+        <span class="er-label">Initializing EdgeRay</span>
+        <div class="er-dots">
+            <div class="er-dot"></div>
+            <div class="er-dot"></div>
+            <div class="er-dot"></div>
+        </div>
+    </div>
+
+    <div id="hydration-error">
+        <strong>⚠ WASM Initialization Failed</strong><br>
+        <span id="hydration-error-msg">Check the browser console for details.</span>
+    </div>
+
+    <script type="module">
+        // Paths are absolute so they work regardless of what sub-path serves index.html.
+        // /wasm/ is whitelisted by the decoy middleware and served by WebStatic (RustEmbed).
+        import init, { __wbindgen_start } from '/wasm/rr-ui.js';
+
+        init('/wasm/rr-ui_bg.wasm')
+            .then(() => {
+                // Signal that Dioxus has mounted — fades out the shell overlay.
+                document.body.classList.add('wasm-ready');
+            })
+            .catch((err) => {
+                console.error('[EdgeRay] WASM init failed:', err);
+                document.body.classList.add('wasm-error');
+                const msg = document.getElementById('hydration-error-msg');
+                if (msg) msg.textContent = String(err);
+            });
+    </script>
+</body>
+</html>
