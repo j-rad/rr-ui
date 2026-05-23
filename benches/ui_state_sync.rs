@@ -1,6 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use dioxus::prelude::*;
-use rr_ui::ui::state::{GlobalState, CoreConnectivity};
+use rr_ui::ui::state::{CoreConnectivity, GlobalState};
 use std::collections::VecDeque;
 
 fn bench_state_update(c: &mut Criterion) {
@@ -23,8 +23,14 @@ fn bench_state_update(c: &mut Criterion) {
         // 3. Updating VecDeque
 
         let stats = vec![
-            rr_ui::ui::server_fns::TrafficStat { name: "uplink".to_string(), value: 1024 },
-            rr_ui::ui::server_fns::TrafficStat { name: "downlink".to_string(), value: 2048 },
+            rr_ui::ui::server_fns::TrafficStats {
+                name: "uplink".to_string(),
+                value: 1024,
+            },
+            rr_ui::ui::server_fns::TrafficStats {
+                name: "downlink".to_string(),
+                value: 2048,
+            },
         ];
         let mut history = VecDeque::with_capacity(60);
         for _ in 0..60 {

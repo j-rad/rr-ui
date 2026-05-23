@@ -130,12 +130,9 @@ impl AuditService {
     pub async fn get_recent(&self, limit: usize) -> Result<Vec<AuditEvent>, String> {
         let db = self.db.read().await;
 
-        let query = format!(
-            "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT {}",
-            limit
-        );
+        let query = "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT $limit";
 
-        match db.client.query(&query).await {
+        match db.client.query(query).bind(("limit", limit)).await {
             Ok(mut response) => {
                 let events: Vec<AuditEvent> = response.take(0).unwrap_or_default();
                 Ok(events)
@@ -156,12 +153,16 @@ impl AuditService {
             .trim_matches('"')
             .to_string();
 
-        let query = format!(
-            "SELECT * FROM audit_log WHERE action = '{}' ORDER BY timestamp DESC LIMIT {}",
-            action_str, limit
-        );
+        let query =
+            "SELECT * FROM audit_log WHERE action = $action ORDER BY timestamp DESC LIMIT $limit";
 
-        match db.client.query(&query).await {
+        match db
+            .client
+            .query(query)
+            .bind(("action", action_str))
+            .bind(("limit", limit))
+            .await
+        {
             Ok(mut response) => {
                 let events: Vec<AuditEvent> = response.take(0).unwrap_or_default();
                 Ok(events)
@@ -174,12 +175,16 @@ impl AuditService {
     pub async fn get_by_user(&self, user: &str, limit: usize) -> Result<Vec<AuditEvent>, String> {
         let db = self.db.read().await;
 
-        let query = format!(
-            "SELECT * FROM audit_log WHERE user = '{}' ORDER BY timestamp DESC LIMIT {}",
-            user, limit
-        );
+        let query =
+            "SELECT * FROM audit_log WHERE user = $user ORDER BY timestamp DESC LIMIT $limit";
 
-        match db.client.query(&query).await {
+        match db
+            .client
+            .query(query)
+            .bind(("user", user.to_string()))
+            .bind(("limit", limit))
+            .await
+        {
             Ok(mut response) => {
                 let events: Vec<AuditEvent> = response.take(0).unwrap_or_default();
                 Ok(events)

@@ -11,13 +11,9 @@ use surrealdb::sql::Thing;
 pub trait InboundRepository: Send + Sync {
     async fn list(&self) -> Result<Vec<Inbound<'static>>>;
     async fn get_outbounds(&self) -> Result<Vec<OutboundModel<'static>>>;
-    async fn create(&self, inbound: Inbound<'static>)
-        -> Result<Option<Inbound<'static>>>;
-    async fn update(
-        &self,
-        id: &str,
-        inbound: Inbound<'static>,
-    ) -> Result<Option<Inbound<'static>>>;
+    async fn create(&self, inbound: Inbound<'static>) -> Result<Option<Inbound<'static>>>;
+    async fn update(&self, id: &str, inbound: Inbound<'static>)
+    -> Result<Option<Inbound<'static>>>;
     async fn delete(&self, id: &str) -> Result<Option<Inbound<'static>>>;
 }
 
@@ -55,10 +51,7 @@ impl InboundRepository for SurrealInboundRepository {
         }
     }
 
-    async fn create(
-        &self,
-        inbound: Inbound<'static>,
-    ) -> Result<Option<Inbound<'static>>> {
+    async fn create(&self, inbound: Inbound<'static>) -> Result<Option<Inbound<'static>>> {
         #[cfg(feature = "server")]
         {
             Ok(self

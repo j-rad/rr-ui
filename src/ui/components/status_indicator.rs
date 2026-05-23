@@ -2,7 +2,7 @@
 //!
 //! Reactive sidebar status indicator showing core connectivity state.
 
-use crate::ui::state::{CoreConnectivity, GlobalState};
+use crate::ui::state::{CoreConnectivity, UIState};
 use dioxus::prelude::*;
 
 /// Status indicator style variants
@@ -42,7 +42,7 @@ fn get_status_classes(status: CoreConnectivity) -> (&'static str, &'static str, 
 /// Reactive status indicator for sidebar
 #[component]
 pub fn StatusIndicator(props: StatusIndicatorProps) -> Element {
-    let state = use_context::<GlobalState>();
+    let state = use_context::<UIState>();
     let core_status = state.core_status_read()();
 
     let (dot_color, text_color, border_color) = get_status_classes(core_status);
@@ -107,7 +107,7 @@ pub fn StatusIndicator(props: StatusIndicatorProps) -> Element {
 /// Compact status for header bar
 #[component]
 pub fn HeaderStatus() -> Element {
-    let state = use_context::<GlobalState>();
+    let state = use_context::<UIState>();
     let core_status = state.core_status_read()();
     let server_status = state.server_status_read()();
 
@@ -141,7 +141,7 @@ pub fn HeaderStatus() -> Element {
 /// Sidebar status section with traffic sparkline
 #[component]
 pub fn SidebarStatus() -> Element {
-    let state = use_context::<GlobalState>();
+    let state = use_context::<UIState>();
     let traffic_history = state.traffic_history_read()();
 
     // Calculate current rates (difference between last two points)

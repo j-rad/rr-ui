@@ -74,7 +74,7 @@ pub fn BulkOperationsModal(props: BulkOperationsModalProps) -> Element {
                 for (i, _id) in ids.iter().enumerate() {
                     // Simulate batch delay
                     if i > 0 && i % 50 == 0 {
-                        #[cfg(feature = "web")]
+                        #[cfg(feature = "server")]
                         {
                             gloo_timers::future::TimeoutFuture::new(100).await;
                         }

@@ -25,7 +25,8 @@ pub fn AddClientModal(props: AddClientModalProps) -> Element {
     let generate_uuid = move |_| {
         // Generate UUID v4 using random bytes
         let mut bytes = [0u8; 16];
-        if let Ok(_) = getrandom::fill(&mut bytes) {
+        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
+        {
             // Set version to 4 (random)
             bytes[6] = (bytes[6] & 0x0f) | 0x40;
             // Set variant to RFC 4122

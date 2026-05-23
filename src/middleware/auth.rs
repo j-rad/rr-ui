@@ -1,10 +1,10 @@
 // src/middleware/auth.rs
 use crate::services::auth::verify_jwt;
 use actix_web::{
-    dev::{Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpMessage,
+    dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
-use futures_util::future::{ok, LocalBoxFuture, Ready};
+use futures_util::future::{LocalBoxFuture, Ready, ok};
 use std::rc::Rc;
 
 pub struct Auth;

@@ -93,35 +93,43 @@ impl DeltaCalculator {
         changes
     }
 
-    fn diff_inbounds(old: &[serde_json::Value], new: &[serde_json::Value]) -> Vec<Change> {
+    fn diff_inbounds<'a>(
+        old: &'a [serde_json::Value],
+        new: &'a [serde_json::Value],
+    ) -> Vec<Change> {
         let mut changes = Vec::new();
 
-        let old_map: HashMap<String, &serde_json::Value> = old
+        let old_map: HashMap<&'a str, &'a serde_json::Value> = old
             .iter()
-            .filter_map(|v| {
-                v.get("id")
-                    .and_then(|id| id.as_str())
-                    .map(|id| (id.to_string(), v))
-            })
+            .filter_map(|v| v.get("id").and_then(|id| id.as_str()).map(|id| (id, v)))
             .collect();
 
-        let new_map: HashMap<String, &serde_json::Value> = new
+        let new_map: HashMap<&'a str, &'a serde_json::Value> = new
             .iter()
-            .filter_map(|v| {
-                v.get("id")
-                    .and_then(|id| id.as_str())
-                    .map(|id| (id.to_string(), v))
-            })
+            .filter_map(|v| v.get("id").and_then(|id| id.as_str()).map(|id| (id, v)))
             .collect();
 
-        // Find added inbounds
         for (id, config) in &new_map {
-            if !old_map.contains_key(id) {
-                if let Ok(inbound_config) = serde_json::from_value((*config).clone()) {
-                    changes.push(Change::InboundAdded {
-                        inbound_id: id.clone(),
-                        config: inbound_config,
-                    });
+            match old_map.get(id) {
+                None => {
+                    if let Ok(inbound_config) = serde_json::from_value((*config).clone()) {
+                        changes.push(Change::InboundAdded {
+                            inbound_id: id.to_string(),
+                            config: inbound_config,
+                        });
+                    }
+                }
+                Some(old_val) => {
+                    if old_val != config {
+                        // Simplified: just mark as modified
+                        // In production, would do field-level diff
+                        changes.push(Change::InboundModified {
+                            inbound_id: id.to_string(),
+                            field: "config".to_string(),
+                            old_value: (*old_val).clone(),
+                            new_value: (*config).clone(),
+                        });
+                    }
                 }
             }
         }
@@ -130,59 +138,46 @@ impl DeltaCalculator {
         for id in old_map.keys() {
             if !new_map.contains_key(id) {
                 changes.push(Change::InboundRemoved {
-                    inbound_id: id.clone(),
+                    inbound_id: id.to_string(),
                 });
-            }
-        }
-
-        // Find modified inbounds
-        for (id, new_val) in &new_map {
-            if let Some(old_val) = old_map.get(id) {
-                if old_val != new_val {
-                    // Simplified: just mark as modified
-                    // In production, would do field-level diff
-                    changes.push(Change::InboundModified {
-                        inbound_id: id.clone(),
-                        field: "config".to_string(),
-                        old_value: (*old_val).clone(),
-                        new_value: (*new_val).clone(),
-                    });
-                }
             }
         }
 
         changes
     }
 
-    fn diff_users(old: &[serde_json::Value], new: &[serde_json::Value]) -> Vec<Change> {
+    fn diff_users<'a>(old: &'a [serde_json::Value], new: &'a [serde_json::Value]) -> Vec<Change> {
         let mut changes = Vec::new();
 
-        let old_map: HashMap<String, &serde_json::Value> = old
+        let old_map: HashMap<&'a str, &'a serde_json::Value> = old
             .iter()
-            .filter_map(|v| {
-                v.get("id")
-                    .and_then(|id| id.as_str())
-                    .map(|id| (id.to_string(), v))
-            })
+            .filter_map(|v| v.get("id").and_then(|id| id.as_str()).map(|id| (id, v)))
             .collect();
 
-        let new_map: HashMap<String, &serde_json::Value> = new
+        let new_map: HashMap<&'a str, &'a serde_json::Value> = new
             .iter()
-            .filter_map(|v| {
-                v.get("id")
-                    .and_then(|id| id.as_str())
-                    .map(|id| (id.to_string(), v))
-            })
+            .filter_map(|v| v.get("id").and_then(|id| id.as_str()).map(|id| (id, v)))
             .collect();
 
-        // Find added users
         for (id, config) in &new_map {
-            if !old_map.contains_key(id) {
-                if let Ok(user_config) = serde_json::from_value((*config).clone()) {
-                    changes.push(Change::UserAdded {
-                        user_id: id.clone(),
-                        config: user_config,
-                    });
+            match old_map.get(id) {
+                None => {
+                    if let Ok(user_config) = serde_json::from_value((*config).clone()) {
+                        changes.push(Change::UserAdded {
+                            user_id: id.to_string(),
+                            config: user_config,
+                        });
+                    }
+                }
+                Some(old_val) => {
+                    if old_val != config {
+                        changes.push(Change::UserModified {
+                            user_id: id.to_string(),
+                            field: "config".to_string(),
+                            old_value: (*old_val).clone(),
+                            new_value: (*config).clone(),
+                        });
+                    }
                 }
             }
         }
@@ -191,22 +186,8 @@ impl DeltaCalculator {
         for id in old_map.keys() {
             if !new_map.contains_key(id) {
                 changes.push(Change::UserRemoved {
-                    user_id: id.clone(),
+                    user_id: id.to_string(),
                 });
-            }
-        }
-
-        // Find modified users
-        for (id, new_val) in &new_map {
-            if let Some(old_val) = old_map.get(id) {
-                if old_val != new_val {
-                    changes.push(Change::UserModified {
-                        user_id: id.clone(),
-                        field: "config".to_string(),
-                        old_value: (*old_val).clone(),
-                        new_value: (*new_val).clone(),
-                    });
-                }
             }
         }
 
@@ -276,7 +257,9 @@ impl DeltaSyncManager {
                 }
                 Change::UserRemoved { user_id } => {
                     if let Some(users) = config.get_mut("users").and_then(|v| v.as_array_mut()) {
-                        users.retain(|u| u.get("id").and_then(|id| id.as_str()) != Some(user_id));
+                        users.retain(|u| {
+                            u.get("id").and_then(|id| id.as_str()) != Some(user_id.as_str())
+                        });
                     }
                 }
                 Change::UserModified {
@@ -287,7 +270,7 @@ impl DeltaSyncManager {
                 } => {
                     if let Some(users) = config.get_mut("users").and_then(|v| v.as_array_mut()) {
                         for user in users {
-                            if user.get("id").and_then(|id| id.as_str()) == Some(user_id) {
+                            if user.get("id").and_then(|id| id.as_str()) == Some(user_id.as_str()) {
                                 if let Some(obj) = user.as_object_mut() {
                                     obj.insert(field.clone(), new_value.clone());
                                 }

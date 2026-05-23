@@ -187,137 +187,161 @@ pub async fn start_traffic_job(state: Arc<AppState>, tx: Sender<Bytes>) {
 
 /// Flushes accumulated traffic deltas to the database.
 async fn flush_traffic_deltas(state: &Arc<AppState>, acc: &TrafficAccumulator) {
-    for (tag, traffic) in &acc.inbound_map {
-        if traffic.up > 0 || traffic.down > 0 {
-            let query = format!(
-                "UPDATE inbound SET up_bytes += {}, down_bytes += {} WHERE tag = '{}'",
-                traffic.up, traffic.down, tag
-            );
-            if let Err(e) = state.db.client.query(&query).await {
-                error!("Failed to update inbound traffic for {}: {}", tag, e);
-            }
+    // 1. Bulk Update Inbound Traffic (Optimized)
+    let inbound_updates: Vec<_> = acc
+        .inbound_map
+        .iter()
+        .filter(|(_, traffic)| traffic.up > 0 || traffic.down > 0)
+        .map(|(tag, traffic)| {
+            serde_json::json!({
+                "tag": tag,
+                "up": traffic.up,
+                "down": traffic.down,
+            })
+        })
+        .collect();
+
+    if !inbound_updates.is_empty() {
+        let query = "FOR $u IN $updates {
+            UPDATE inbound SET up_bytes += $u.up, down_bytes += $u.down WHERE tag = $u.tag;
+        };";
+        if let Err(e) = state
+            .db
+            .client
+            .query(query)
+            .bind(("updates", inbound_updates))
+            .await
+        {
+            error!("Failed to batch update inbound traffic: {}", e);
         }
     }
 
+    // 2. Client Traffic Updates and Policy Enforcement (Optimized)
     if !acc.client_map.is_empty() {
-        if let Ok(inbounds) = state.db.client.select::<Vec<Inbound>>("inbound").await {
-            for mut inbound in inbounds {
-                let mut modified = false;
+        // Collect only client emails that have traffic
+        let active_emails: Vec<_> = acc.client_map.keys().cloned().collect();
 
-                if let Some(clients) = inbound.settings.clients_mut() {
-                    for client in clients.iter_mut() {
-                        if let Some(email) = &client.email {
-                            if let Some(delta) = acc.client_map.get(email) {
-                                if delta.up > 0 || delta.down > 0 {
-                                    client.up += delta.up;
-                                    client.down += delta.down;
-                                    modified = true;
+        // Fetch only inbounds that contain at least one of the active clients
+        // This avoids loading all inbounds into memory if only a few are active
+        let query = "SELECT * FROM inbound WHERE settings.clients[WHERE email IN $emails]";
+        let inbounds: Vec<Inbound> = match state
+            .db
+            .client
+            .query(query)
+            .bind(("emails", active_emails))
+            .await
+        {
+            Ok(mut res) => res.take(0).unwrap_or_default(),
+            Err(e) => {
+                error!("Failed to fetch active inbounds: {}", e);
+                return;
+            }
+        };
 
-                                    // Enforce Total Flow Limit
-                                    if client.total_flow_limit > 0 {
-                                        let used_up = client.up.max(0) as u64;
-                                        let used_down = client.down.max(0) as u64;
-                                        let total_used = used_up + used_down;
+        for mut inbound in inbounds {
+            let mut modified = false;
 
-                                        if total_used >= client.total_flow_limit && client.enable {
-                                            info!(
-                                                "Client {} exceeded flow limit ({} >= {}). Disabling.",
-                                                email, total_used, client.total_flow_limit
-                                            );
-                                            client.enable = false;
-                                            modified = true;
-                                        }
-                                    }
+            if let Some(clients) = inbound.settings.clients_mut() {
+                for client in clients.iter_mut() {
+                    if let Some(email) = client.email.clone() {
+                        if let Some(delta) = acc.client_map.get(&email) {
+                            if delta.up > 0 || delta.down > 0 {
+                                client.up += delta.up;
+                                client.down += delta.down;
+                                modified = true;
 
-                                    // Enforce Expiry Time
-                                    if client.expiry_time > 0 {
-                                        let now = Utc::now().timestamp_millis();
-                                        if now > client.expiry_time && client.enable {
-                                            info!("Client {} expired. Disabling.", email);
-                                            client.enable = false;
-                                            modified = true;
-                                        }
-                                    }
-
-                                    // Enforce IP Limit
-                                    if let Some(limit_ip) = client.limit_ip {
-                                        if limit_ip > 0 && client.enable {
-                                            let active_ips =
-                                                state.log_watcher.get_active_ip_count(email);
-                                            if active_ips > limit_ip as usize {
-                                                info!(
-                                                    "Client {} exceeded IP limit ({} > {}). Disabling.",
-                                                    email, active_ips, limit_ip
-                                                );
-                                                // Ideally we kick specific IPs, but RustRay doesn't support that easily.
-                                                // We disable the user for now (strict policy).
-                                                client.enable = false;
-                                                modified = true;
-                                            }
-                                        }
-                                    }
-
-                                    // Speed Watchdog (Warning Only)
-                                    // traffic job runs every 30s (Slow Loop) for DB flush, but accumulator has data.
-                                    // To calculate speed properly, we need the delta time since last check.
-                                    // The 'delta' here is accumulated over the slow loop interval?
-                                    // Actually, traffic job has a Fast Loop (1s). We should check speed THERE.
-                                    // But we are in the Slow Loop logic block here.
-                                    // Let's rely on the Fast Loop for real-time speed enforcement if needed.
-                                    // For now, let's just log a warning if the *average* speed over 30s is massive?
-                                    // No, let's move speed check to Fast Loop.
-                                    // But we don't have mutable access to Client config in Fast Loop easily without DB query.
-                                    // Let's stick to IP limiting here (Slow Loop) and handle Speed in Fast Loop if feasible,
-                                    // or just log aggregated violation here.
-
-                                    // Calculating average speed over the last flush interval (approx 30s)
-                                    if client.up_speed_limit > 0 || client.down_speed_limit > 0 {
-                                        let interval_secs = 30; // Approximation
-                                        let up_speed = (delta.up as u64) / interval_secs;
-                                        let down_speed = (delta.down as u64) / interval_secs;
-
-                                        // Speed limits are in kbps usually? Or Bps?
-                                        // Models say 'up_speed_limit: u32'. Usually specificied in bytes/sec or kbps in UI.
-                                        // Let's assume bytes/sec for strictness or verify UI.
-                                        // UI says "kbps". So limit * 1024.
-
-                                        let limit_up_bps = client.up_speed_limit as u64 * 1024;
-                                        let limit_down_bps = client.down_speed_limit as u64 * 1024;
-
-                                        if client.up_speed_limit > 0 && up_speed > limit_up_bps {
-                                            info!(
-                                                "Client {} exceeding upload limit ({} B/s > {} B/s)",
-                                                email, up_speed, limit_up_bps
-                                            );
-                                            // Could trigger a temporary throttle or penalty here
-                                        }
-
-                                        if client.down_speed_limit > 0
-                                            && down_speed > limit_down_bps
-                                        {
-                                            info!(
-                                                "Client {} exceeding download limit ({} B/s > {} B/s)",
-                                                email, down_speed, limit_down_bps
-                                            );
-                                        }
-                                    }
-                                }
+                                // Policy Enforcement
+                                enforce_client_policies(client, &email, delta, state, &mut modified);
                             }
                         }
                     }
                 }
+            }
 
-                if modified {
-                    if let Some(record_id) = &inbound.id {
-                        let _: Result<Option<Inbound>, _> = state
-                            .db
-                            .client
-                            .update(("inbound", record_id.id.to_string()))
-                            .content(inbound)
-                            .await;
-                    }
+            if modified {
+                if let Some(record_id) = &inbound.id {
+                    let _: Result<Option<Inbound>, _> = state
+                        .db
+                        .client
+                        .update(("inbound", record_id.id.to_string()))
+                        .content(inbound)
+                        .await;
                 }
             }
+        }
+    }
+}
+
+/// Helper to enforce client traffic policies (limits, expiry, speed).
+fn enforce_client_policies(
+    client: &mut crate::models::Client,
+    email: &str,
+    delta: &TrafficDelta,
+    state: &Arc<AppState>,
+    modified: &mut bool,
+) {
+    // Enforce Total Flow Limit
+    if client.total_flow_limit > 0 {
+        let used_up = client.up.max(0) as u64;
+        let used_down = client.down.max(0) as u64;
+        let total_used = used_up + used_down;
+
+        if total_used >= client.total_flow_limit && client.enable {
+            info!(
+                "Client {} exceeded flow limit ({} >= {}). Disabling.",
+                email, total_used, client.total_flow_limit
+            );
+            client.enable = false;
+            *modified = true;
+        }
+    }
+
+    // Enforce Expiry Time
+    if client.expiry_time > 0 {
+        let now = Utc::now().timestamp_millis();
+        if now > client.expiry_time && client.enable {
+            info!("Client {} expired. Disabling.", email);
+            client.enable = false;
+            *modified = true;
+        }
+    }
+
+    // Enforce IP Limit
+    if let Some(limit_ip) = client.limit_ip {
+        if limit_ip > 0 && client.enable {
+            let active_ips = state.log_watcher.get_active_ip_count(email);
+            if active_ips > limit_ip as usize {
+                info!(
+                    "Client {} exceeded IP limit ({} > {}). Disabling.",
+                    email, active_ips, limit_ip
+                );
+                client.enable = false;
+                *modified = true;
+            }
+        }
+    }
+
+    // Speed Watchdog (Warning Only)
+    if client.up_speed_limit > 0 || client.down_speed_limit > 0 {
+        let interval_secs = 30; // Approximation for slow loop
+        let up_speed = (delta.up as u64) / interval_secs;
+        let down_speed = (delta.down as u64) / interval_secs;
+
+        let limit_up_bps = client.up_speed_limit as u64 * 1024;
+        let limit_down_bps = client.down_speed_limit as u64 * 1024;
+
+        if client.up_speed_limit > 0 && up_speed > limit_up_bps {
+            info!(
+                "Client {} exceeding upload limit ({} B/s > {} B/s)",
+                email, up_speed, limit_up_bps
+            );
+        }
+
+        if client.down_speed_limit > 0 && down_speed > limit_down_bps {
+            info!(
+                "Client {} exceeding download limit ({} B/s > {} B/s)",
+                email, down_speed, limit_down_bps
+            );
         }
     }
 }

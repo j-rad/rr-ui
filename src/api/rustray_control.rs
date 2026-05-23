@@ -1,9 +1,79 @@
-// src/api/rustray_control.rs
 use crate::AppState;
 use crate::models::GeneralResponse;
 use crate::rustray_process::SharedRustRayProcess;
 use actix_web::{HttpResponse, Responder, get, post, web};
 use std::process::Command;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tonic::{Request, Response, Status};
+
+pub mod proto {
+    tonic::include_proto!("rustray.core.app.proxyman.command");
+}
+
+use proto::control_service_server::ControlService;
+pub use proto::{ConfigEvent, SubscribeConfigRequest, TelemetryReport, TelemetryResponse};
+
+pub struct ControlServiceImpl {
+    pub app_state: Arc<crate::server::AppState>,
+}
+
+#[tonic::async_trait]
+impl ControlService for ControlServiceImpl {
+    type SubscribeConfigStream = ReceiverStream<Result<ConfigEvent, Status>>;
+
+    async fn subscribe_config(
+        &self,
+        request: Request<tonic::Streaming<SubscribeConfigRequest>>,
+    ) -> Result<Response<Self::SubscribeConfigStream>, Status> {
+        let mut stream = request.into_inner();
+        let (tx, rx) = mpsc::channel(128);
+
+        let app_state = self.app_state.clone();
+
+        tokio::spawn(async move {
+            let mut last_node_id = None;
+            while let Ok(Some(req)) = stream.message().await {
+                let node_id = req.node_id;
+                last_node_id = Some(node_id.clone());
+                log::info!(
+                    "Node '{}' subscribed to config updates (bi-directional stream)",
+                    node_id
+                );
+                app_state.node_streams.insert(node_id.clone(), tx.clone());
+            }
+            if let Some(node_id) = last_node_id {
+                log::info!("Node '{}' disconnected, cleaning up config stream", node_id);
+                app_state.node_streams.remove(&node_id);
+            }
+        });
+
+        Ok(Response::new(ReceiverStream::new(rx)))
+    }
+
+    async fn push_telemetry(
+        &self,
+        request: Request<TelemetryReport>,
+    ) -> Result<Response<TelemetryResponse>, Status> {
+        let report = request.into_inner();
+
+        // Record traffic for billing delta sync
+        for traffic in report.traffic {
+            self.app_state.billing_sync.record_traffic(
+                traffic.inbound_tag,
+                traffic.email,
+                traffic.up,
+                traffic.down,
+            );
+        }
+
+        // Potential: Update node health in mesh orchestrator
+        // self.app_state.mesh_orchestrator.heartbeat(&report.node_id, report.system).await;
+
+        Ok(Response::new(TelemetryResponse { success: true }))
+    }
+}
 
 #[get("/status")]
 pub async fn status(data: web::Data<SharedRustRayProcess>) -> impl Responder {

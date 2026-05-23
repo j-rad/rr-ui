@@ -2,12 +2,38 @@ use actix_web::{HttpResponse, Responder, web};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RealityKeypair {
     #[serde(rename = "privateKey")]
     pub private_key: String,
     #[serde(rename = "publicKey")]
     pub public_key: String,
+}
+
+fn parse_reality_keypair_output(stdout: &str) -> Option<RealityKeypair> {
+    let mut private_key = String::new();
+    let mut public_key = String::new();
+
+    for line in stdout.lines() {
+        if let Some((key, value)) = line.split_once(':') {
+            let key = key.trim();
+            let value = value.trim();
+            if key.eq_ignore_ascii_case("private key") {
+                private_key = value.to_string();
+            } else if key.eq_ignore_ascii_case("public key") {
+                public_key = value.to_string();
+            }
+        }
+    }
+
+    if !private_key.is_empty() && !public_key.is_empty() {
+        Some(RealityKeypair {
+            private_key,
+            public_key,
+        })
+    } else {
+        None
+    }
 }
 
 /// Generate a Reality keypair using rustray x25519 command
@@ -18,23 +44,8 @@ pub async fn generate_reality_keypair() -> impl Responder {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
 
-                // Parse output: "Private key: xxx\nPublic key: yyy"
-                let mut private_key = String::new();
-                let mut public_key = String::new();
-
-                for line in stdout.lines() {
-                    if line.starts_with("Private key:") {
-                        private_key = line.replace("Private key:", "").trim().to_string();
-                    } else if line.starts_with("Public key:") {
-                        public_key = line.replace("Public key:", "").trim().to_string();
-                    }
-                }
-
-                if !private_key.is_empty() && !public_key.is_empty() {
-                    return HttpResponse::Ok().json(RealityKeypair {
-                        private_key,
-                        public_key,
-                    });
+                if let Some(keypair) = parse_reality_keypair_output(&stdout) {
+                    return HttpResponse::Ok().json(keypair);
                 }
             }
 
@@ -78,4 +89,41 @@ fn generate_keypair_fallback() -> HttpResponse {
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/reality/keypair").route(web::get().to(generate_reality_keypair)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_reality_keypair_ideal() {
+        let output = "Private key: priv123\nPublic key: pub456\n";
+        let parsed = parse_reality_keypair_output(output).unwrap();
+        assert_eq!(parsed.private_key, "priv123");
+        assert_eq!(parsed.public_key, "pub456");
+    }
+
+    #[test]
+    fn test_parse_reality_keypair_weird_spacing() {
+        let output = "   private KEY   :   priv_spaced   \nPUBLIC key:pub_spaced";
+        let parsed = parse_reality_keypair_output(output).unwrap();
+        assert_eq!(parsed.private_key, "priv_spaced");
+        assert_eq!(parsed.public_key, "pub_spaced");
+    }
+
+    #[test]
+    fn test_parse_reality_keypair_missing_field() {
+        let output = "Private key: priv123\nOther stuff: blabla";
+        let parsed = parse_reality_keypair_output(output);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn test_parse_reality_keypair_random_noise() {
+        let output =
+            "Starting up...\nPrivate key: pk\nSome debug info: 123\nPublic key: pubk\nDone.";
+        let parsed = parse_reality_keypair_output(output).unwrap();
+        assert_eq!(parsed.private_key, "pk");
+        assert_eq!(parsed.public_key, "pubk");
+    }
 }

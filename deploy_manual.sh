@@ -7,13 +7,7 @@ set -e
 # Configuration
 BINARY_NAME="rr-ui"
 RUSTRAY_BINARY="rustray_core/rustray/rustray"
-LOCAL_BINARY_PATH="./target/release/$BINARY_NAME"
-WEB_DIR="./web"
-
-# UI Configuration
-# Set to "true" to use Dioxus UI instead of static web build
-# Note: Dioxus UI is currently in development (see DIOXUS_UI_STATUS.md)
-USE_DIOXUS_UI="${USE_DIOXUS_UI:-false}"
+LOCAL_BINARY_PATH="../target/release/$BINARY_NAME"
 
 
 # Colors
@@ -56,12 +50,16 @@ SERVER_DEST=$1
 print_banner
 log_info "Starting Native RustRay Deployment to $SERVER_DEST"
 
-# 0. Verify RustRay binary exists
+# 0. Verify and build RustRay binary
 log_info "Verifying RustRay binary..."
 if [ ! -f "$RUSTRAY_BINARY" ]; then
-    log_error "RustRay binary not found at $RUSTRAY_BINARY"
-    log_info "Please build RustRay first: cd rustray_core && cargo build --release"
-    exit 1
+    log_warn "RustRay binary not found at $RUSTRAY_BINARY"
+    log_info "Attempting to build RustRay core automatically..."
+    (cd rustray_core && cargo build --release --offline)
+    if [ ! -f "$RUSTRAY_BINARY" ]; then
+        log_error "Failed to build rustray manually, executable not found."
+        exit 1
+    fi
 fi
 
 # Verify execution permissions
@@ -72,54 +70,11 @@ fi
 
 log_success "RustRay binary verified"
 
-# 1. Build Frontend
-if [ "$USE_DIOXUS_UI" = "true" ]; then
-    log_info "Building Dioxus UI (Manual Mode)..."
-    
-    # Check for wasm-bindgen
-    if ! command -v wasm-bindgen &> /dev/null; then
-        log_error "wasm-bindgen CLI not found. Install with: cargo install wasm-bindgen-cli --version 0.2.106"
-        exit 1
-    fi
-    
-    # A. Build Client (Wasm)
-    log_info "Compiling WASM..."
-    cargo build --target wasm32-unknown-unknown --features web --release --no-default-features
-    
-    log_info "Running wasm-bindgen..."
-    mkdir -p web/static
-    wasm-bindgen target/wasm32-unknown-unknown/release/rr-ui.wasm --out-dir web/static --target web --no-typescript
-    
-    log_success "Dioxus Client built and assets generated in web/static"
+# 1. Build Server Binary (server-only, no standalone WASM client)
+log_info "Building RR-UI Server Binary (release)..."
+cargo build --release --bin rr-ui --features "server" --offline
 
-    # B. Build Server Binary (x86_64)
-    log_info "Building Dioxus Server Binary..."
-    # Ensure server feature is enabled which bundles the web/static assets
-    cargo build --release --bin rr-ui --features "server"
-    
-    CLI_BINARY_PATH="./target/release/rr-ui"
-else
-    # Standard Static Web Build (Vue/Svelte/etc)
-    log_info "Building Static Web Frontend..."
-    if [ -d "$WEB_DIR" ]; then
-        cd "$WEB_DIR"
-        if ! command -v pnpm &> /dev/null; then
-            log_error "pnpm not found. Please install it."
-            exit 1
-        fi
-        pnpm install
-        pnpm build
-        cd ..
-        log_success "Frontend built"
-    else
-        log_warn "Web directory not found at $WEB_DIR. Skipping frontend build."
-    fi
-    
-    # Standard Server Build
-    log_info "Building Backend (Release with Server features)..."
-    cargo build --release --bin rr-ui --features "server"
-    CLI_BINARY_PATH="./target/release/rr-ui"
-fi
+CLI_BINARY_PATH="../target/release/rr-ui"
 
 if [ ! -f "$CLI_BINARY_PATH" ]; then
     log_error "Binary not found at $CLI_BINARY_PATH after build."

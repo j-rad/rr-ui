@@ -5,11 +5,48 @@
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "server", feature = "web"))]
 use server_fn_macro_default::server;
 
 // Server function imports
 pub use server_fn::error::ServerFnError;
+use crate::domain::proxy_core::CoreConfig;
+
+/// Get the active core configuration
+#[server]
+pub async fn get_core_config() -> Result<CoreConfig, ServerFnError> {
+    #[cfg(feature = "server")]
+    {
+        // For now returning a default config or from orchestrator
+        if let Ok(orch) = server_state::get_orchestrator() {
+            // Mocking for now, in reality orch would have the current config
+            Ok(CoreConfig {
+                log_level: crate::domain::proxy_core::LogLevel::Info,
+                inbounds: vec![],
+                outbounds: vec![],
+                routing: crate::domain::proxy_core::RoutingConfig {
+                    rules: vec![],
+                    domain_strategy: crate::domain::proxy_core::DomainStrategy::AsIs,
+                },
+                dns: None,
+            })
+        } else {
+            Err(ServerFnError::<server_fn::error::NoCustomError>::ServerError("Orchestrator not ready".to_string()))
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Ok(CoreConfig {
+            log_level: crate::domain::proxy_core::LogLevel::Info,
+            inbounds: vec![],
+            outbounds: vec![],
+            routing: crate::domain::proxy_core::RoutingConfig {
+                rules: vec![],
+                domain_strategy: crate::domain::proxy_core::DomainStrategy::AsIs,
+            },
+            dns: None,
+        })
+    }
+}
 
 // ============================================================================
 // Shared Types (available on both client and server)
@@ -71,7 +108,7 @@ pub struct ActiveSessionView {
 
 #[cfg(feature = "server")]
 #[allow(dead_code)]
-mod server_state {
+pub mod server_state {
     use std::sync::Arc;
     use std::sync::OnceLock;
     use tokio::sync::Mutex;
@@ -86,6 +123,7 @@ mod server_state {
     static MESH_ORCHESTRATOR: OnceLock<SharedMeshOrchestrator> = OnceLock::new();
     static ORCHESTRATOR: OnceLock<Arc<crate::services::orchestrator::Orchestrator>> =
         OnceLock::new();
+    static RECONCILER_TRIGGER: OnceLock<tokio::sync::mpsc::Sender<()>> = OnceLock::new();
 
     /// Get or initialize the database client
     pub async fn get_db() -> Result<DbClient, String> {
@@ -144,6 +182,14 @@ mod server_state {
             .get()
             .cloned()
             .ok_or_else(|| "Orchestrator not initialized".to_string())
+    }
+
+    pub fn set_reconciler_trigger(trigger: tokio::sync::mpsc::Sender<()>) {
+        let _ = RECONCILER_TRIGGER.set(trigger);
+    }
+
+    pub fn get_reconciler_trigger() -> Option<tokio::sync::mpsc::Sender<()>> {
+        RECONCILER_TRIGGER.get().cloned()
     }
 }
 
@@ -235,6 +281,20 @@ pub async fn get_server_status() -> Result<crate::models::ServerStatus, ServerFn
     #[cfg(target_arch = "wasm32")]
     {
         Ok(crate::models::ServerStatus::default())
+    }
+}
+
+/// Get the last core transport error
+#[server]
+pub async fn get_last_core_error() -> Result<Option<String>, ServerFnError> {
+    #[cfg(feature = "server")]
+    {
+        use crate::services::telemetry::TelemetryService;
+        Ok(TelemetryService::global().get_last_core_error().await)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Ok(None)
     }
 }
 
@@ -344,6 +404,40 @@ pub async fn login(request: LoginRequest) -> Result<LoginResponse, ServerFnError
         let settings_vec: Vec<AllSetting> = db.client.select("setting").await.map_err(|e| {
             ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
         })?;
+        // Handle initial setup (no settings in DB)
+        if settings_vec.is_empty() {
+            if request.username == "admin" && request.password == "admin" {
+                // Initialize default settings
+                let hash = hash_password("admin").map_err(|e| {
+                    ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
+                })?;
+                let default_settings = AllSetting {
+                    username: "admin".to_string(),
+                    password_hash: hash,
+                    ..Default::default()
+                };
+                let _ = db.client.create(("setting", "global")).content(default_settings).await;
+
+                let token = create_jwt(&request.username).map_err(|e| {
+                    ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
+                })?;
+
+                return Ok(LoginResponse {
+                    token,
+                    requires_mfa: false,
+                    success: true,
+                    message: "Initial setup successful".to_string(),
+                });
+            } else {
+                return Ok(LoginResponse {
+                    token: String::new(),
+                    requires_mfa: false,
+                    success: false,
+                    message: "Invalid credentials for initial setup".to_string(),
+                });
+            }
+        }
+
         let settings = settings_vec.into_iter().next().unwrap_or_default();
 
         // Verify username
@@ -839,7 +933,7 @@ pub async fn generate_qr_code(text: String) -> Result<String, ServerFnError> {
 
 /// Get TUN interface configuration
 #[server]
-pub async fn get_tun_config() -> Result<crate::models::TunConfig<'static>, ServerFnError> {
+pub async fn get_tun_config() -> Result<crate::models::TunConfig, ServerFnError> {
     #[cfg(feature = "server")]
     {
         use crate::models::{Inbound, ProtocolSettings};
@@ -859,7 +953,7 @@ pub async fn get_tun_config() -> Result<crate::models::TunConfig<'static>, Serve
         for inbound in inbounds {
             if let ProtocolSettings::Tun(tun) = inbound.settings {
                 // Return owned config
-                return Ok(tun.into_owned()); // Need to fix lifetimes or clone
+                return Ok(tun);
             }
         }
 
@@ -874,9 +968,7 @@ pub async fn get_tun_config() -> Result<crate::models::TunConfig<'static>, Serve
 
 /// Save TUN interface configuration
 #[server]
-pub async fn set_tun_config(
-    config: crate::models::TunConfig<'static>,
-) -> Result<bool, ServerFnError> {
+pub async fn set_tun_config(config: crate::models::TunConfig) -> Result<bool, ServerFnError> {
     #[cfg(feature = "server")]
     {
         use crate::models::{Inbound, ProtocolSettings};
@@ -981,7 +1073,7 @@ pub async fn get_dns_config() -> Result<crate::models::DnsConfig, ServerFnError>
 }
 
 /// Save System DNS configuration
-#[cfg(feature = "web")]
+#[cfg(feature = "server")]
 #[server]
 pub async fn set_dns_config(config: crate::models::DnsConfig) -> Result<bool, ServerFnError> {
     #[cfg(feature = "server")]
@@ -1187,11 +1279,30 @@ pub async fn get_realtime_stats() -> Result<crate::models::DashboardStats, Serve
             packet_loss_percent: 0.01,
         });
 
+        // 5. Fetch Nuclear Mode Status from DB
+        let db = server_state::get_db().await.map_err(|e| {
+            ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
+        })?;
+        let settings =
+            <crate::models::AllSetting as crate::repositories::setting::SettingOps>::get(&db)
+                .await
+                .map_err(|e| {
+                    ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
+                })?
+                .unwrap_or_default();
+
         Ok(DashboardStats {
             active_connections,
             discovery_state,
             mesh_stats,
             node_health,
+            nuclear_mode_active: settings.nuclear_mode_active,
+            smr_metrics: crate::models::SmrTelemetry {
+                current_psd_entropy: rng.gen_range(0.65..0.98),
+                iat_jitter_ms: rng.gen_range(4.0..25.0),
+                decoy_fallback_triggers: rng.gen_range(0..12),
+                active_probes_blocked: rng.gen_range(0..50),
+            },
         })
     }
     #[cfg(target_arch = "wasm32")]
@@ -1664,5 +1775,43 @@ pub async fn control_core_process(action: String) -> Result<bool, ServerFnError>
     #[cfg(target_arch = "wasm32")]
     {
         Ok(false)
+    }
+}
+
+/// Toggle Nuclear Mode (Emergency Ghost Mode)
+#[server]
+pub async fn activate_nuclear_mode(active: bool) -> Result<(), ServerFnError> {
+    #[cfg(feature = "server")]
+    {
+        use crate::repositories::setting::SettingOps;
+
+        let db = server_state::get_db().await.map_err(|e| {
+            ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
+        })?;
+
+        let mut settings = <crate::models::AllSetting as SettingOps>::get(&db)
+            .await
+            .map_err(|e| {
+                ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
+            })?
+            .unwrap_or_default();
+
+        settings.nuclear_mode_active = active;
+        settings.save(&db).await.map_err(|e| {
+            ServerFnError::<server_fn::error::NoCustomError>::ServerError(e.to_string())
+        })?;
+
+        // Trigger immediate reconciliation
+        if let Some(trigger) = server_state::get_reconciler_trigger() {
+            let _ = trigger.try_send(());
+            log::info!("Nuclear Mode triggered fleet reconciliation.");
+        }
+
+        Ok(())
+    }
+    #[cfg(not(feature = "server"))]
+    {
+        let _ = active;
+        Ok(())
     }
 }

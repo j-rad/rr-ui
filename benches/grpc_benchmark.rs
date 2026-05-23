@@ -1,5 +1,5 @@
 // benches/grpc_benchmark.rs
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use serde_json::json;
 
 // Benchmark JSON serialization of different system state sizes

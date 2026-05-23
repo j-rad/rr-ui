@@ -39,4 +39,6 @@ pub mod theme_toggle;
 pub mod toast;
 pub mod traffic_matrix;
 pub mod transport_matrix;
+pub mod hydration_gate;
+pub mod mimicry_gauge;
 pub mod tun_dashboard;

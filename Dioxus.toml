@@ -1,18 +1,16 @@
 [application]
 name = "rr-ui"
-default_platform = "fullstack"
+default_platform = "web"
+asset_dir = "public"
+out_dir = "dist"
 
 [web.app]
 title = "RR-UI Admin Panel"
-features = ["web"]
+base_path = "."
 
 [web.watcher]
 reload_html = true
 watch_path = ["src"]
-
-[web.resource]
-dev = { path = "web/static" }
-style = ["layout.css"]
 script = []
 
 [server]

@@ -2,7 +2,8 @@ use rr_ui::domain::models::ActiveConnection;
 
 #[test]
 fn test_aggregation_logic() {
-    let connections = [ActiveConnection {
+    let connections = [
+        ActiveConnection {
             id: "1".to_string(),
             upload_bytes: 100,
             download_bytes: 200,
@@ -19,7 +20,8 @@ fn test_aggregation_logic() {
             upload_bytes: 50,
             download_bytes: 50,
             ..Default::default()
-        }];
+        },
+    ];
 
     let total_up: u64 = connections.iter().map(|c| c.upload_bytes).sum();
     let total_down: u64 = connections.iter().map(|c| c.download_bytes).sum();
@@ -41,8 +43,14 @@ fn test_history_pruning_logic() {
 
     // New stats: conns 2, 3 (1 disconnected)
     let new_stats = vec![
-        ActiveConnection { id: "2".to_string(), ..Default::default() },
-        ActiveConnection { id: "3".to_string(), ..Default::default() },
+        ActiveConnection {
+            id: "2".to_string(),
+            ..Default::default()
+        },
+        ActiveConnection {
+            id: "3".to_string(),
+            ..Default::default()
+        },
     ];
 
     let mut seen_ids = Vec::new();

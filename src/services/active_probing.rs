@@ -133,7 +133,13 @@ impl ActiveProber {
     }
 
     /// Probe TCP endpoint
-    pub async fn probe_tcp(&self, node_id: &str, address: &str, port: u16, source_ip: Option<String>) -> ProbeResult {
+    pub async fn probe_tcp(
+        &self,
+        node_id: &str,
+        address: &str,
+        port: u16,
+        source_ip: Option<String>,
+    ) -> ProbeResult {
         let start = Instant::now();
         let target_str = format!("{}:{}", address, port);
 

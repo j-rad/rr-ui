@@ -8,19 +8,37 @@ use std::time::Duration;
 pub struct StateReconciler {
     db: DbClient,
     orchestrator: Arc<Orchestrator>,
+    app_state: Arc<crate::server::AppState>,
+    trigger_rx: tokio::sync::mpsc::Receiver<()>,
 }
 
 impl StateReconciler {
-    pub fn new(db: DbClient, orchestrator: Arc<Orchestrator>) -> Self {
-        Self { db, orchestrator }
+    pub fn new(
+        db: DbClient,
+        orchestrator: Arc<Orchestrator>,
+        app_state: Arc<crate::server::AppState>,
+        trigger_rx: tokio::sync::mpsc::Receiver<()>,
+    ) -> Self {
+        Self {
+            db,
+            orchestrator,
+            app_state,
+            trigger_rx,
+        }
     }
 
-    pub async fn run(self) {
+    pub async fn run(mut self) {
         let mut interval = tokio::time::interval(Duration::from_secs(60)); // Check every minute
 
         loop {
-            interval.tick().await;
-            info!("Starting periodic user reconciliation...");
+            tokio::select! {
+                _ = interval.tick() => {
+                    info!("Starting periodic user reconciliation...");
+                }
+                _ = self.trigger_rx.recv() => {
+                    info!("Manual reconciliation triggered.");
+                }
+            }
 
             if let Err(e) = self.reconcile().await {
                 error!("Reconciliation failed: {}", e);
@@ -29,57 +47,54 @@ impl StateReconciler {
     }
 
     pub async fn reconcile(&self) -> anyhow::Result<()> {
-        // 1. Fetch all inbounds from DB
-        #[cfg(feature = "server")]
-        {
-            let sql = "SELECT * FROM inbound";
-            let mut result = self.db.client.query(sql).await?;
-            let inbounds: Vec<Inbound> = result.take(0)?;
+        use crate::api::rustray_control::ConfigEvent;
+        use crate::rustray_config::RustRayConfigBuilder;
 
-            for inbound in inbounds {
-                if !inbound.enable {
-                    continue;
-                }
+        // 1. Fetch all nodes from mesh
+        let nodes = self
+            .app_state
+            .mesh_orchestrator
+            .list_nodes()
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
 
-                if let Some(clients) = inbound.settings.clients() {
-                    for client in clients {
-                        let uuid = client.id.as_deref().unwrap_or_default();
-                        let email = client.email.as_deref().unwrap_or_default();
+        // 2. Generate desired configuration from DB
+        let desired_config = RustRayConfigBuilder::build(&self.db).await?;
+        let desired_hash = desired_config.calculate_hash()?;
+        let json_config = serde_json::to_string(&desired_config)?;
 
-                        // Only sync enabled clients
-                        if !client.enable {
-                            continue;
-                        }
+        for node in nodes {
+            let node_id = node.node_id.clone();
 
-                        // If no UUID/Email, skip (can't sync invalid user)
-                        if uuid.is_empty() {
-                            continue;
-                        }
+            // 3. Check for drift
+            let needs_update = match &node.config_hash {
+                Some(h) => h != &desired_hash,
+                None => true,
+            };
 
-                        // Attempt sync
-                        // We map client.level to u32, default 0
-                        // Inbound tag comes from inbound struct
-                        match self
-                            .orchestrator
-                            .sync_user_live(uuid, email, &inbound.tag, 0)
-                            .await
-                        {
-                            Ok(_) => {
-                                // Success - strictly speaking RustRay AddUser throws error if exists,
-                                // but we might want to ignore "Generic error: User already exists"
-                                // Since we don't strictly parsing the error string here, we log debug/warn.
-                            }
-                            Err(e) => {
-                                // "User already exists" is a common error here if we naively add.
-                                // Real implementation should check existence or handle specific error type.
-                                // For now we log warning.
-                                warn!(
-                                    "Failed to sync user {} to inbound {}: {}",
-                                    email, inbound.tag, e
-                                );
-                            }
-                        }
+            if needs_update {
+                info!(
+                    "Drift detected for node '{}'. desired: {}, actual: {:?}",
+                    node_id, desired_hash, node.config_hash
+                );
+
+                // 4. Push update via gRPC if subscriber exists
+                if let Some(sender) = self.app_state.node_streams.get(&node_id) {
+                    let event = ConfigEvent {
+                        json_delta: json_config.clone(), // Sending full JSON as "delta" for now
+                        config_hash: desired_hash.clone(),
+                    };
+
+                    if let Err(e) = sender.try_send(Ok(event)) {
+                        warn!("Failed to push config update to node '{}': {}", node_id, e);
+                    } else {
+                        info!("Config update pushed to node '{}'", node_id);
                     }
+                } else {
+                    warn!(
+                        "No active gRPC stream for node '{}', skipping update",
+                        node_id
+                    );
                 }
             }
         }

@@ -58,7 +58,7 @@ fn test_client_serialization_strict_types() {
         total_flow_limit: 1024 * 1024 * 1024, // 1GB
         limit_ip: Some(3),
         enable: true,
-        created_by: Some(42),
+        created_by: Some("42".to_string()),
         ..Default::default()
     };
 
@@ -67,7 +67,7 @@ fn test_client_serialization_strict_types() {
     let json = serde_json::to_value(&client).unwrap();
     // Default serialization uses field name 'totalFlowLimit' (camelCase)
     assert_eq!(json["totalFlowLimit"], 1073741824);
-    assert_eq!(json["created_by"], 42);
+    assert_eq!(json["createdBy"], "42");
 }
 
 #[test]
@@ -154,4 +154,30 @@ fn test_socks_serialization() {
         bind_address: "127.0.0.1".into(),
     };
     verify_serialization(&s);
+}
+
+#[test]
+fn test_all_setting_defaults_path() {
+    let setting = AllSetting::default();
+    assert_eq!(setting.panel_secret_path, "/panel");
+    assert_eq!(setting.username, "admin");
+}
+
+#[test]
+fn test_login_response_serialization() {
+    use crate::ui::server_fns::LoginResponse;
+    let resp = LoginResponse {
+        token: "test-token".to_string(),
+        requires_mfa: false,
+        success: true,
+        message: "Success".to_string(),
+    };
+    
+    let json = serde_json::to_string(&resp).unwrap();
+    assert!(json.contains("\"success\":true"));
+    assert!(json.contains("\"token\":\"test-token\""));
+    
+    let deserialized: LoginResponse = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.token, resp.token);
+    assert_eq!(deserialized.success, resp.success);
 }

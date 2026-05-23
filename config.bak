@@ -34,7 +34,7 @@
   "inbounds": [
     {
       "tag": "api",
-      "port": 41573,
+      "port": 10085,
       "protocol": "dokodemo-door",
       "settings": {
         "address": "127.0.0.1"
@@ -66,10 +66,10 @@
     "rules": [
       {
         "type": "field",
-        "inboundTag": [
+        "inbound_tag": [
           "api"
         ],
-        "outboundTag": "api"
+        "outbound_tag": "api"
       }
     ]
   }

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use log::info;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::{Client, StatusCode};
@@ -147,13 +147,13 @@ impl GeoOrchestrator {
             (
                 "geoip.dat",
                 "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat",
-                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat.sha256sum"
+                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat.sha256sum",
             ),
             (
                 "geosite.dat",
                 "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat",
-                 "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat.sha256sum"
-            )
+                "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat.sha256sum",
+            ),
         ];
 
         let mut total_bytes = 0;

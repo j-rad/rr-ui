@@ -7,8 +7,9 @@ use crate::domain::models::{ActiveConnection, DashboardStats, DiscoveryState, No
 use crate::ui::components::card::Card;
 use crate::ui::components::cpu_gauge::CpuGauge;
 use crate::ui::components::memory_progress::MemoryProgress;
+use crate::ui::components::mimicry_gauge::MimicryGauge;
 use crate::ui::components::sparkline::Sparkline;
-use crate::ui::server_fns::get_realtime_stats;
+use crate::ui::server_fns::{activate_nuclear_mode, get_realtime_stats};
 use dioxus::prelude::*;
 use std::collections::{HashMap, VecDeque};
 
@@ -59,43 +60,60 @@ pub fn DashboardPage() -> Element {
     let mut conn_history = use_signal(|| HashMap::<String, VecDeque<(i64, i64)>>::new());
     let mut global_traffic_history = use_signal(|| VecDeque::<(i64, i64)>::with_capacity(60));
 
+    let mut toast = use_context::<crate::ui::components::toast::ToastStore>();
+    let mut last_dashboard_error = use_signal(|| None::<String>);
+
     // Polling coroutine
-    use_coroutine(move |_: UnboundedReceiver<()>| async move {
-        loop {
-            if let Ok(new_stats) = get_realtime_stats().await {
-                // Aggregate global traffic for the large sparkline
-                let (total_up, total_down) = new_stats
-                    .active_connections
-                    .iter()
-                    .fold((0i64, 0i64), |(u, d), c| {
-                        (u + c.upload_bytes as i64, d + c.download_bytes as i64)
-                    });
-                global_traffic_history.with_mut(|h| {
-                    if h.len() >= 60 {
-                        h.pop_front();
-                    }
-                    h.push_back((total_up, total_down));
-                });
+    use_coroutine(move |_: UnboundedReceiver<()>| {
+        let mut toast = toast.clone();
+        async move {
+            loop {
+                match get_realtime_stats().await {
+                    Ok(new_stats) => {
+                        // Aggregate global traffic for the large sparkline
+                        let (total_up, total_down) = new_stats
+                            .active_connections
+                            .iter()
+                            .fold((0i64, 0i64), |(u, d), c| {
+                                (u + c.upload_bytes as i64, d + c.download_bytes as i64)
+                            });
+                        global_traffic_history.with_mut(|h| {
+                            if h.len() >= 60 {
+                                h.pop_front();
+                            }
+                            h.push_back((total_up, total_down));
+                        });
 
-                // Per-connection history
-                conn_history.with_mut(|history| {
-                    let mut seen_ids = Vec::new();
-                    for conn in &new_stats.active_connections {
-                        seen_ids.push(conn.id.clone());
-                        let deque = history
-                            .entry(conn.id.clone())
-                            .or_insert_with(|| VecDeque::with_capacity(60));
-                        if deque.len() >= 30 {
-                            deque.pop_front();
+                        // Per-connection history
+                        conn_history.with_mut(|history| {
+                            let mut seen_ids = Vec::new();
+                            for conn in &new_stats.active_connections {
+                                seen_ids.push(conn.id.clone());
+                                let deque = history
+                                    .entry(conn.id.clone())
+                                    .or_insert_with(|| VecDeque::with_capacity(60));
+                                if deque.len() >= 30 {
+                                    deque.pop_front();
+                                }
+                                deque.push_back((conn.upload_bytes as i64, conn.download_bytes as i64));
+                            }
+                            history.retain(|k, _| seen_ids.contains(k));
+                        });
+
+                        stats.set(new_stats);
+                        last_dashboard_error.set(None);
+                    }
+                    Err(e) => {
+                        let err_msg = e.to_string();
+                        if last_dashboard_error.read().as_ref() != Some(&err_msg) {
+                            let tactical = crate::ui::error_bridge::TacticalMessage::connection_failed(&err_msg);
+                            toast.tactical(tactical);
+                            last_dashboard_error.set(Some(err_msg));
                         }
-                        deque.push_back((conn.upload_bytes as i64, conn.download_bytes as i64));
                     }
-                    history.retain(|k, _| seen_ids.contains(k));
-                });
-
-                stats.set(new_stats);
+                }
+                crate::ui::sleep::sleep(1000).await;
             }
-            crate::ui::sleep::sleep(1000).await;
         }
     });
 
@@ -119,6 +137,40 @@ pub fn DashboardPage() -> Element {
 
     rsx! {
         div { class: "p-4 space-y-4 animate-fade-in",
+
+            // Header Row with Title and Nuclear Button
+            div { class: "flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2",
+                div {
+                    h1 { class: "text-2xl font-bold text-white tracking-tight", "Network Dashboard" }
+                    p { class: "text-xs text-gray-500 mt-1", "Real-time fleet telemetry and autonomous control" }
+                }
+
+                div { class: "flex items-center gap-3",
+                    button {
+                        class: if s.nuclear_mode_active { "group relative flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-500 overflow-hidden bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)] border-red-500" } else { "group relative flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-500 overflow-hidden bg-glass-bg text-red-500 border border-red-500/30 hover:border-red-500 hover:bg-red-500/10" },
+                        onclick: move |_| {
+                            let next_state = !stats.read().nuclear_mode_active;
+                            spawn(async move {
+                                let _ = activate_nuclear_mode(next_state).await;
+                            });
+                        },
+                        // Glow effect for active state
+                        if s.nuclear_mode_active {
+                            span { class: "absolute inset-0 bg-red-400/20 animate-pulse" }
+                        }
+
+                        i { class: if s.nuclear_mode_active { "fa-solid fa-radiation animate-spin-slow" } else { "fa-solid fa-radiation" } }
+                        span { "Nuclear Hotkey" }
+                    }
+
+                    if s.nuclear_mode_active {
+                        div { class: "flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-[10px] text-red-400 font-mono animate-pulse",
+                            i { class: "fa-solid fa-shield-halved" }
+                            span { "EMERGENCY GHOST MODE ACTIVE: ALL TRAFFIC TUNNELED VIA CDN" }
+                        }
+                    }
+                }
+            }
 
             // ── Row 1: Bento stat cards ─────────────────────────────────
             div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4",
@@ -240,6 +292,31 @@ pub fn DashboardPage() -> Element {
                         }
                         if top_conns.is_empty() {
                             div { class: "text-center text-gray-600 text-xs py-4", "No active connections" }
+                        }
+                    }
+                }
+            }
+
+            // ── Row 2b: SMR Mimicry Gauge ────────────────────────────────
+            div { class: "grid grid-cols-1 lg:grid-cols-3 gap-4",
+                div { class: "lg:col-span-2",
+                    MimicryGauge { metrics: s.smr_metrics.clone(), gauge_size: 140 }
+                }
+                // Quick info card
+                div { class: "bg-glass-bg backdrop-blur-xl border border-glass-border rounded-2xl p-5 hover:border-emerald-500/10 transition-all duration-300 flex flex-col justify-center",
+                    h3 { class: "text-sm font-bold text-white uppercase tracking-wider mb-3", "SMR Transport" }
+                    div { class: "space-y-2 text-xs",
+                        div { class: "flex justify-between",
+                            span { class: "text-gray-500", "Protocol" }
+                            span { class: "text-emerald-400 font-mono", "ShadowMieru" }
+                        }
+                        div { class: "flex justify-between",
+                            span { class: "text-gray-500", "Pacing" }
+                            span { class: "text-cyan-400 font-mono", "Brutal" }
+                        }
+                        div { class: "flex justify-between",
+                            span { class: "text-gray-500", "Auth" }
+                            span { class: "text-purple-400 font-mono", "Weird URI" }
                         }
                     }
                 }

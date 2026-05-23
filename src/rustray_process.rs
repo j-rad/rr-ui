@@ -13,6 +13,7 @@ pub struct RustRayProcess {
     bin_path: PathBuf,
     config_path: PathBuf,
     api_port: Option<u16>,
+    is_mock: bool,
 }
 
 impl RustRayProcess {
@@ -22,6 +23,7 @@ impl RustRayProcess {
             bin_path: PathBuf::from(bin_path),
             config_path: PathBuf::from(config_path),
             api_port,
+            is_mock: false,
         }
     }
 
@@ -32,14 +34,20 @@ impl RustRayProcess {
         }
 
         // Validate binary exists
-        if !self.bin_path.exists() {
-            let err_msg = format!(
-                "Binary not found at {:?}. Please check your core settings or ensure rustray is in PATH.",
-                self.bin_path
-            );
-            error!("{}", err_msg);
-            return Err(anyhow::anyhow!(err_msg));
+        if !self.bin_path.exists() && !self.bin_path.is_absolute() {
+            // Check if in PATH
+            if which::which(&self.bin_path).is_err() {
+                warn!("Binary {:?} not found and not in PATH. Entering Mock Mode.", self.bin_path);
+                self.is_mock = true;
+                return Ok(());
+            }
+        } else if !self.bin_path.exists() {
+            warn!("Binary {:?} not found. Entering Mock Mode.", self.bin_path);
+            self.is_mock = true;
+            return Ok(());
         }
+
+        self.is_mock = false;
 
         info!("Starting rustray core at {:?}...", self.bin_path);
 
@@ -143,7 +151,7 @@ impl RustRayProcess {
                 Err(_) => false,
             }
         } else {
-            false
+            self.is_mock
         }
     }
 }

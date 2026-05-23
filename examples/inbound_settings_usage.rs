@@ -11,7 +11,7 @@ use rr_ui::models::{
 fn example_vless() {
     let vless_settings = VlessSettings {
         clients: vec![Client {
-            id: Some("uuid-here".to_string()), // .into()
+            id: Some("uuid-here".to_string()),           // .into()
             email: Some("user@example.com".to_string()), // .into()
             flow: Some(FlowType::XtlsRprxVision),
             enable: true,
@@ -40,7 +40,7 @@ fn example_vless() {
 fn example_shadowsocks() {
     let ss_settings = Shadowsocks2022Settings {
         method: "2022-blake3-aes-256-gcm".to_string().into(), // fixed
-        password: Some("password123".to_string()),     // fixed
+        password: Some("password123".to_string()),            // fixed
         key: None,
         network: Some("tcp,udp".to_string().into()), // fixed
         email: Some("admin@example.com".to_string().into()), // fixed

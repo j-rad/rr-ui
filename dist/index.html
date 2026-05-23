@@ -1,14 +1,73 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>RR-UI Admin Panel</title>
-        <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta charset="UTF-8">
-    <link rel="stylesheet" href="layout.css">
-<link rel="preload" as="script" href="/./assets/rr-ui-dxh4b4e09eccd7ec7b.js" crossorigin></head>
-    <body>
-        <div id="main"></div>
-    <script type="module" async src="/./assets/rr-ui-dxh4b4e09eccd7ec7b.js"></script>
-            </body>
+<head>
+    <title>EdgeRay // Tactical Dashboard</title>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="/panel/">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; img-src 'self' data:; frame-ancestors 'none';">
+    <style>
+        /* Zero-dependency Hydration Mask */
+        body {
+            background-color: #030712;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: sans-serif;
+            color: #f8fafc;
+        }
+
+        .hydration-mask {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            transition: opacity 0.5s ease;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(0, 212, 255, 0.1);
+            border-top: 4px solid #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            font-size: 0.875rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Hide mask when loaded */
+        .loaded .hydration-mask {
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="main">
+        <div class="hydration-mask">
+            <div class="spinner"></div>
+            <div class="loading-text">Hydrating EdgeRay Core...</div>
+        </div>
+    </div>
+    <script type="module">
+        import init from '/wasm/rr-ui.js';
+        init('/wasm/rr-ui_bg.wasm').then(() => {
+            document.body.classList.add('loaded');
+        });
+    </script>
+</body>
 </html>

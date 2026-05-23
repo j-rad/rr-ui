@@ -1,13 +1,13 @@
 // src/api/tun.rs
 //! API endpoints for TUN device management
 
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, web};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, SocketAddr};
 
+use crate::AppState;
 use crate::models::GeneralResponse;
 use crate::tun_device::{TunConfig, TunState};
-use crate::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

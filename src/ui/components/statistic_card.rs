@@ -79,76 +79,80 @@ pub struct StatisticCardProps {
 /// A statistic display card with icon, value, and trend indicator
 #[component]
 pub fn StatisticCard(props: StatisticCardProps) -> Element {
-    let trend_class = match props.trend {
-        TrendDirection::Up => "text-green-400",
-        TrendDirection::Down => "text-red-400",
-        TrendDirection::Neutral => "text-gray-400",
-    };
+    let card = use_memo(move || {
+        let trend_class = match props.trend {
+            TrendDirection::Up => "text-green-400",
+            TrendDirection::Down => "text-red-400",
+            TrendDirection::Neutral => "text-gray-400",
+        };
 
-    let trend_icon = match props.trend {
-        TrendDirection::Up => "trending_up",
-        TrendDirection::Down => "trending_down",
-        TrendDirection::Neutral => "trending_flat",
-    };
+        let trend_icon = match props.trend {
+            TrendDirection::Up => "trending_up",
+            TrendDirection::Down => "trending_down",
+            TrendDirection::Neutral => "trending_flat",
+        };
 
-    if props.compact {
-        // Compact inline layout
-        rsx! {
-            div { class: "flex items-center gap-3",
-                if let Some(ref icon) = props.icon {
-                    div { class: "p-2 rounded-lg {props.color.bg_class()}",
-                        span { class: "material-symbols-outlined text-[20px] {props.color.icon_class()}", "{icon}" }
-                    }
-                }
-                div {
-                    div { class: "text-xs text-gray-500 uppercase tracking-wider", "{props.title}" }
-                    div { class: "text-lg font-bold text-white",
-                        if let Some(ref prefix) = props.prefix {
-                            span { "{prefix}" }
-                        }
-                        span { "{props.value}" }
-                        if let Some(ref suffix) = props.suffix {
-                            span { class: "text-sm text-gray-400 ml-1", "{suffix}" }
+        if props.compact {
+            // Compact inline layout
+            rsx! {
+                div { class: "flex items-center gap-3",
+                    if let Some(ref icon) = props.icon {
+                        div { class: "p-2 rounded-lg {props.color.bg_class()}",
+                            span { class: "material-symbols-outlined text-[20px] {props.color.icon_class()}", "{icon}" }
                         }
                     }
-                }
-            }
-        }
-    } else {
-        // Full card layout
-        rsx! {
-            div { class: "relative bg-glass-bg/60 backdrop-blur-xl border border-glass-border rounded-xl p-5 transition-all duration-300 hover:border-primary/30 hover:-translate-y-0.5 hover:shadow-glow overflow-hidden group",
-                // Gradient overlay
-                div { class: "absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-black/[0.02] pointer-events-none rounded-xl" }
-
-                div { class: "relative flex items-start justify-between",
                     div {
-                        div { class: "text-sm text-text-secondary mb-2 font-medium", "{props.title}" }
-                        div { class: "text-2xl font-bold text-text-main tracking-tight animate-counter",
+                        div { class: "text-xs text-gray-500 uppercase tracking-wider", "{props.title}" }
+                        div { class: "text-lg font-bold text-white",
                             if let Some(ref prefix) = props.prefix {
                                 span { "{prefix}" }
                             }
-                            span { class: "statistic-value", "{props.value}" }
+                            span { "{props.value}" }
                             if let Some(ref suffix) = props.suffix {
-                                span { class: "text-base text-text-muted ml-1.5 font-medium", "{suffix}" }
-                            }
-                        }
-                        if let Some(ref trend_val) = props.trend_value {
-                            div { class: "flex items-center gap-1.5 mt-2.5 text-sm {trend_class}",
-                                span { class: "material-symbols-outlined text-[16px]", "{trend_icon}" }
-                                span { class: "font-medium", "{trend_val}" }
+                                span { class: "text-sm text-gray-400 ml-1", "{suffix}" }
                             }
                         }
                     }
-                    if let Some(ref icon) = props.icon {
-                        div { class: "p-3 rounded-xl {props.color.bg_class()} transition-transform group-hover:scale-110",
-                            span { class: "material-symbols-outlined text-[28px] {props.color.icon_class()}", "{icon}" }
+                }
+            }
+        } else {
+            // Full card layout
+            rsx! {
+                div { class: "relative bg-glass-bg/60 backdrop-blur-xl border border-glass-border rounded-xl p-5 transition-all duration-300 hover:border-primary/30 hover:-translate-y-0.5 hover:shadow-glow overflow-hidden group",
+                    // Gradient overlay
+                    div { class: "absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-black/[0.02] pointer-events-none rounded-xl" }
+
+                    div { class: "relative flex items-start justify-between",
+                        div {
+                            div { class: "text-sm text-text-secondary mb-2 font-medium", "{props.title}" }
+                            div { class: "text-2xl font-bold text-text-main tracking-tight animate-counter",
+                                if let Some(ref prefix) = props.prefix {
+                                    span { "{prefix}" }
+                                }
+                                span { class: "statistic-value", "{props.value}" }
+                                if let Some(ref suffix) = props.suffix {
+                                    span { class: "text-base text-text-muted ml-1.5 font-medium", "{suffix}" }
+                                }
+                            }
+                            if let Some(ref trend_val) = props.trend_value {
+                                div { class: "flex items-center gap-1.5 mt-2.5 text-sm {trend_class}",
+                                    span { class: "material-symbols-outlined text-[16px]", "{trend_icon}" }
+                                    span { class: "font-medium", "{trend_val}" }
+                                }
+                            }
+                        }
+                        if let Some(ref icon) = props.icon {
+                            div { class: "p-3 rounded-xl {props.color.bg_class()} transition-transform group-hover:scale-110",
+                                span { class: "material-symbols-outlined text-[28px] {props.color.icon_class()}", "{icon}" }
+                            }
                         }
                     }
                 }
             }
         }
-    }
+    });
+
+    card()
 }
 
 #[cfg(test)]

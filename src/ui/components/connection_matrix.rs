@@ -99,10 +99,10 @@ pub fn ConnectionMatrix() -> Element {
                     }
                 }
 
-                #[cfg(feature = "web")]
+                #[cfg(feature = "server")]
                 crate::ui::sleep::sleep(1000 as u64).await;
-                #[cfg(not(feature = "web"))]
-                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                #[cfg(not(feature = "server"))]
+                crate::ui::sleep::sleep(1000).await;
             }
         });
     });

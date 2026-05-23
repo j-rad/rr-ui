@@ -1,11 +1,11 @@
 //! Theme Switcher Component
 
-use crate::ui::state::GlobalState;
+use crate::ui::state::UIState;
 use dioxus::prelude::*;
 
 #[component]
 pub fn ThemeSwitcher() -> Element {
-    let state = use_context::<GlobalState>();
+    let state = use_context::<UIState>();
     let mut theme = state.theme;
 
     let toggle_theme = move |_| {

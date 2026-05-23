@@ -156,11 +156,7 @@ impl InboundRepository for SurrealInboundRepository {
         }
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        inbound: Inbound<'static>,
-    ) -> DomainResult<Inbound<'static>> {
+    async fn update(&self, id: &str, inbound: Inbound<'static>) -> DomainResult<Inbound<'static>> {
         #[cfg(feature = "server")]
         {
             let thing = Self::parse_thing_id(id).ok_or_else(|| DomainError::ValidationFailed {

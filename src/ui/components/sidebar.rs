@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 
 use crate::ui::app::Route;
 use crate::ui::state::GlobalState;
+use super::status_indicator::SidebarStatus;
 
 /// Menu item definition
 struct MenuItem {
@@ -66,6 +67,11 @@ fn get_menu_items() -> Vec<MenuItem> {
             route: Route::Migration {},
             label: "Migration",
             icon: "upload_file",
+        },
+        MenuItem {
+            route: Route::TrafficMimicry {},
+            label: "Traffic Mimicry",
+            icon: "visibility_off",
         },
     ]
 }
@@ -133,6 +139,11 @@ pub fn Sidebar(props: SidebarProps) -> Element {
                 for item in menu_items {
                     {render_menu_item(&item, collapsed(), &current_route)}
                 }
+            }
+
+            // Status section
+            if !collapsed() {
+                SidebarStatus {}
             }
 
             // Footer actions

@@ -98,140 +98,153 @@ enum Commands {
 }
 
 fn main() {
-    // Install default crypto provider to avoid rustls panic
-    #[cfg(feature = "server")]
-    let _ = rustls::crypto::ring::default_provider().install_default();
-
     #[cfg(feature = "server")]
     {
-        // Initialize logging
-        if std::env::var("RUST_LOG").is_err() {
-            unsafe {
-                std::env::set_var("RUST_LOG", "info,actix_http=error,actix_server=error");
-            }
+        // Install default crypto provider to avoid rustls panic
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        server_main();
+    }
+
+    #[cfg(not(feature = "server"))]
+    {
+        #[cfg(target_arch = "wasm32")]
+        {
+            console_error_panic_hook::set_once();
+            tracing_wasm::set_as_global_default();
         }
+        dioxus::launch(rr_ui::ui::app::App);
+    }
+}
 
-        // Check if running under `dx serve` development mode
-        let is_dx_serve = std::env::var("DIOXUS_CLI_ENABLED").is_ok()
-            || std::env::var("__DIOXUS_DEV_PORT").is_ok()
-            || std::env::var("CARGO_BIN_NAME")
-                .map(|s| s.contains("rr-ui"))
-                .unwrap_or(false)
-                && std::env::args().len() == 1
-                && std::env::var("PORT").is_ok();
-
-        // If no arguments provided AND not in dx serve, show interactive TUI menu
-        // OR if a CLI command is provided, run it.
-        // Otherwise, launch the fullstack Dioxus app.
-        if std::env::args().len() == 1 && !is_dx_serve {
-            // Run TUI menu if no args and not in Dioxus dev mode
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    if let Err(e) = tui_menu().await {
-                        eprintln!("TUI error: {}", e);
-                    }
-                });
-        } else if std::env::args().len() > 1 && !is_dx_serve {
-            // Run CLI command
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    if let Err(e) = run_cli_command().await {
-                        eprintln!("CLI error: {}", e);
-                    }
-                });
-        } else {
-            // Launch Dioxus fullstack app (server mode)
-            // Launch Server (Custom Actix)
-            tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    info!("Initializing Services...");
-                    match rr_ui::db::DbClient::init("rr-ui.db").await {
-                        Ok(db) => {
-                            let backend_port = 10085;
-                            let rustray_process =
-                                rr_ui::rustray_process::SharedRustRayProcess::init_from_db_with_port(
-                                    "config.json",
-                                    &db,
-                                    backend_port,
-                                )
-                                .await;
-
-                            // Start Telemetry Service
-                            let tel_service =
-                                rr_ui::services::telemetry::TelemetryService::global();
-                            tel_service
-                                .set_rustray_client(rr_ui::rustray_client::RustRayClient::new(backend_port));
-                            tel_service.start();
-
-                            // Start Watchdog
-                            let wd_rustray = rustray_process.clone();
-                            let wd_db = db.clone();
-                            let wd_client = rr_ui::rustray_client::RustRayClient::new(backend_port);
-                            tokio::spawn(async move {
-                                rr_ui::jobs::watchdog::start_watchdog_job(wd_rustray, wd_db, wd_client).await;
-                            });
-
-                            // Start Traffic Reset Job
-                            let tr_db = db.clone();
-                            tokio::spawn(async move {
-                                rr_ui::jobs::traffic_reset::start_traffic_reset_job(
-                                    tr_db,
-                                    rr_ui::jobs::traffic_reset::TrafficResetConfig::default(),
-                                )
-                                .await;
-                            });
-
-                            // Start Lifecycle Job (Expiration & traffic limits)
-                            let lc_db = db.clone();
-                            tokio::spawn(async move {
-                                rr_ui::jobs::lifecycle::start_lifecycle_job(
-                                    lc_db,
-                                    rr_ui::jobs::lifecycle::LifecycleConfig::default(),
-                                )
-                                .await;
-                            });
-
-                            // Start Auto-Failover Engine
-                            let failover_config =
-                                rr_ui::services::auto_failover::FailoverConfig::default();
-                            // In a real deployment, these would come from settings/DB
-                            let cf_config = None; // Placeholder
-                            let failover_engine =
-                                rr_ui::services::auto_failover::PredictiveFailoverEngine::new(
-                                    failover_config,
-                                    cf_config,
-                                );
-
-                            // Add some initial nodes if available (placeholder)
-                            // failover_engine.add_node(...);
-
-                            tokio::spawn(async move {
-                                failover_engine.run().await;
-                            });
-
-                            // Run App
-                            if let Err(e) = rr_ui::run_app(db).await {
-                                error!("Application error: {}", e);
-                            }
-                        }
-                        Err(e) => error!("Failed to init DB: {}", e),
-                    }
-                });
+#[cfg(feature = "server")]
+fn server_main() {
+    // Initialize logging
+    if std::env::var("RUST_LOG").is_err() {
+        unsafe {
+            std::env::set_var("RUST_LOG", "info,actix_http=error,actix_server=error");
         }
     }
 
-    #[cfg(all(not(feature = "server"), feature = "web"))]
-    {
-        dioxus::launch(rr_ui::ui::app::App);
+    // Check if running under `dx serve` development mode
+    let is_dx_serve = std::env::var("DIOXUS_CLI_ENABLED").is_ok()
+        || std::env::var("__DIOXUS_DEV_PORT").is_ok()
+        || std::env::var("CARGO_BIN_NAME")
+            .map(|s| s.contains("rr-ui"))
+            .unwrap_or(false)
+            && std::env::args().len() == 1
+            && std::env::var("PORT").is_ok();
+
+    // If no arguments provided AND not in dx serve, show interactive TUI menu
+    // OR if a CLI command is provided, run it.
+    // Otherwise, launch the fullstack Dioxus app.
+    if std::env::args().len() == 1 && !is_dx_serve {
+        // Run TUI menu if no args and not in Dioxus dev mode
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                if let Err(e) = tui_menu().await {
+                    eprintln!("TUI error: {}", e);
+                }
+            });
+    } else if std::env::args().len() > 1 && !is_dx_serve {
+        // Run CLI command
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                if let Err(e) = run_cli_command().await {
+                    eprintln!("CLI error: {}", e);
+                }
+            });
+    } else {
+        // Launch Dioxus fullstack app (server mode)
+        // Launch Server (Custom Actix)
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                // Verify embedded assets before starting services
+                rr_ui::ui::theme::assets::verify_assets();
+
+                info!("Initializing Services...");
+                match rr_ui::db::DbClient::init("rr-ui.db").await {
+                    Ok(db) => {
+                        let backend_port = 10085;
+                        let rustray_process =
+                            rr_ui::rustray_process::SharedRustRayProcess::init_from_db_with_port(
+                                "config.json",
+                                &db,
+                                backend_port,
+                            )
+                            .await;
+
+                        // Start Telemetry Service
+                        let tel_service = rr_ui::services::telemetry::TelemetryService::global();
+                        tel_service.set_rustray_client(rr_ui::rustray_client::RustRayClient::new(
+                            backend_port,
+                        ));
+                        tel_service.start();
+
+                        // Start Watchdog
+                        let wd_rustray = rustray_process.clone();
+                        let wd_db = db.clone();
+                        let wd_client = rr_ui::rustray_client::RustRayClient::new(backend_port);
+                        tokio::spawn(async move {
+                            rr_ui::jobs::watchdog::start_watchdog_job(wd_rustray, wd_db, wd_client)
+                                .await;
+                        });
+
+                        // Start Traffic Reset Job
+                        let tr_db = db.clone();
+                        tokio::spawn(async move {
+                            rr_ui::jobs::traffic_reset::start_traffic_reset_job(
+                                tr_db,
+                                rr_ui::jobs::traffic_reset::TrafficResetConfig::default(),
+                            )
+                            .await;
+                        });
+
+                        // Start Lifecycle Job (Expiration & traffic limits)
+                        let lc_db = db.clone();
+                        tokio::spawn(async move {
+                            rr_ui::jobs::lifecycle::start_lifecycle_job(
+                                lc_db,
+                                rr_ui::jobs::lifecycle::LifecycleConfig::default(),
+                            )
+                            .await;
+                        });
+
+                        // Start Auto-Failover Engine
+                        let failover_config =
+                            rr_ui::services::auto_failover::FailoverConfig::default();
+                        // In a real deployment, these would come from settings/DB
+                        let cf_config = None; // Placeholder
+                        let failover_engine =
+                            rr_ui::services::auto_failover::PredictiveFailoverEngine::new(
+                                failover_config,
+                                cf_config,
+                            );
+
+                        // Add some initial nodes if available (placeholder)
+                        // failover_engine.add_node(...);
+
+                        tokio::spawn(async move {
+                            failover_engine.run().await;
+                        });
+
+                        // Run App
+                        if let Err(e) = rr_ui::run_app(db).await {
+                            error!("Application error: {}", e);
+                        }
+                    }
+                    Err(e) => error!("Failed to init DB: {}", e),
+                }
+            });
     }
 }
 

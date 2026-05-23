@@ -59,7 +59,7 @@ fn PluginSlotItem(slot: UiSlot) -> Element {
         spawn(async move {
             // In production, this would load the component from component_url
             // For now, just mark as loaded
-            #[cfg(feature = "web")]
+            #[cfg(feature = "server")]
             {
                 gloo_timers::future::TimeoutFuture::new(100).await;
             }

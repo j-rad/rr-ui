@@ -11,7 +11,6 @@ pub mod errors;
 pub mod graph_schema;
 pub mod models;
 pub mod plugin_api;
-#[cfg(feature = "server")]
 pub mod proxy_core;
 
 // Server-only

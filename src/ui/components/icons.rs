@@ -345,3 +345,21 @@ pub fn Info(props: IconProps) -> Element {
         }
     }
 }
+
+#[component]
+pub fn Power(props: IconProps) -> Element {
+    rsx! {
+        svg {
+            width: "{props.size}",
+            height: "{props.size}",
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "{props.color}",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            path { d: "M18.36 6.64a9 9 0 1 1-12.73 0" }
+            line { x1: "12", y1: "2", x2: "12", y2: "12" }
+        }
+    }
+}

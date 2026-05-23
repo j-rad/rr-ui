@@ -1,4 +1,4 @@
-use crate::ui::components::forms::{ChoiceBox, ChoiceBoxOption, TextInput, NumberInput};
+use crate::ui::components::forms::{ChoiceBox, ChoiceBoxOption, NumberInput, TextInput};
 use dioxus::prelude::*;
 
 #[component]

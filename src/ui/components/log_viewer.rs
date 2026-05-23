@@ -2,15 +2,14 @@
 //!
 //! High-performance virtualized log viewer with filtering.
 
-use crate::ui::components::forms::TextInput;
 use dioxus::prelude::*;
-use std::collections::VecDeque;
 
 #[derive(Clone, PartialEq)]
 pub struct LogEntry {
     pub timestamp: String,
     pub level: String,
     pub message: String,
+    pub details: String,
 }
 
 #[derive(Props, Clone, PartialEq)]
@@ -35,7 +34,7 @@ pub fn LogViewer(props: LogViewerProps) -> Element {
             props
                 .logs
                 .iter()
-                .filter(|log| re.is_match(&log.message) || re.is_match(&log.level))
+                .filter(|log: &&LogEntry| re.is_match(&log.message) || re.is_match(&log.level))
                 .cloned()
                 .collect::<Vec<_>>()
         } else {
@@ -43,7 +42,7 @@ pub fn LogViewer(props: LogViewerProps) -> Element {
             props
                 .logs
                 .iter()
-                .filter(|log| log.message.contains(&*regex_str))
+                .filter(|log: &&LogEntry| log.message.contains(&*regex_str))
                 .cloned()
                 .collect::<Vec<_>>()
         }

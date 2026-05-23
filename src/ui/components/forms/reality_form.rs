@@ -11,7 +11,7 @@ pub fn RealityForm(
     private_key: Signal<String>,
     public_key: Signal<String>,
     pqc: Signal<Option<String>>,
-    fingerprint: Signal<String>,
+    fingerprint: Signal<Option<String>>,
     stealth: Signal<bool>,
     generate_keys: EventHandler<()>,
 ) -> Element {

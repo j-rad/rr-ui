@@ -1,6 +1,6 @@
 use crate::middleware::ws_telemetry::WsTelemetrySession;
 use actix_web::web::Bytes;
-use actix_web::{get, web, Error, HttpRequest, HttpResponse};
+use actix_web::{Error, HttpRequest, HttpResponse, get, web};
 use actix_web_actors::ws;
 use tokio::sync::broadcast::Sender;
 

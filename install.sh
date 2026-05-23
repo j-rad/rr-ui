@@ -496,6 +496,7 @@ resolve_port_conflicts() {
             # But "Welcome to Nginx" means it IS running.
             log_warn "Nginx detected. It might be conflicting. Stopping it to ensure rr-ui can bind."
             systemctl stop nginx
+            systemctl disable nginx
         fi
     fi
 

@@ -46,7 +46,7 @@ pub fn TrafficMatrix() -> Element {
     use_effect(move || {
         if !canvas_initialized() {
             spawn(async move {
-                #[cfg(feature = "web")]
+                #[cfg(feature = "server")]
                 {
                     gloo_timers::future::TimeoutFuture::new(100).await;
                 }
@@ -60,14 +60,14 @@ pub fn TrafficMatrix() -> Element {
     use_effect(move || {
         spawn(async move {
             loop {
-                #[cfg(feature = "web")]
+                #[cfg(feature = "server")]
                 {
                     gloo_timers::future::TimeoutFuture::new(2000).await;
                 }
 
-                #[cfg(not(feature = "web"))]
+                #[cfg(not(feature = "server"))]
                 {
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    crate::ui::sleep::sleep(2000).await;
                 }
 
                 // Simulate traffic data update

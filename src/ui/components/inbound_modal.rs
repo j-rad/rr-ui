@@ -55,7 +55,7 @@ pub fn InboundModal(props: InboundModalProps) -> Element {
     let mut reality_private_key = use_signal(|| String::new());
     let mut reality_public_key = use_signal(|| String::new());
     let mut reality_pqc = use_signal(|| None::<String>);
-    let mut tls_fingerprint = use_signal(|| String::from("chrome"));
+    let mut tls_fingerprint = use_signal(|| Some(String::from("chrome")));
     let mut stealth_handshake = use_signal(|| false);
 
     // WebSocket settings

@@ -208,15 +208,14 @@ impl MeshOrchestrator {
                 let tls = ClientTlsConfig::new();
 
                 let channel_result = match Channel::from_shared(url) {
-                    Ok(endpoint) => {
-                        endpoint
-                            .tls_config(tls)
-                            .unwrap_or_else(|e| e)
-                            .timeout(Duration::from_secs(2))
-                            .connect()
-                            .await
+                    Ok(endpoint) => match endpoint.tls_config(tls) {
+                        Ok(ep) => ep.timeout(Duration::from_secs(2)).connect().await,
+                        Err(e) => Err(e),
+                    },
+                    Err(e) => {
+                        log::error!("Invalid URL for node {}: {}", node.node_id, e);
+                        return;
                     }
-                    Err(_) => return,
                 };
 
                 let channel = match channel_result {
@@ -289,6 +288,7 @@ mod tests {
                 disk_percent: 40.0,
                 latency_ms: 50.0,
                 packet_loss_percent: 0.1,
+                isp_score: 0.9,
             },
             status: MeshNodeStatus::Online,
             ..Default::default()
@@ -341,6 +341,7 @@ mod tests {
             disk_percent: 40.0,
             latency_ms: 50.0,
             packet_loss_percent: 0.1,
+            isp_score: 1.0,
         };
 
         assert!(health.is_healthy());

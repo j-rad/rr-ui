@@ -5,9 +5,13 @@ pub mod auth;
 #[cfg(feature = "server")]
 pub mod auto_failover;
 #[cfg(feature = "server")]
+pub mod billing_delta;
+#[cfg(feature = "server")]
 pub mod bulk_worker;
 #[cfg(feature = "server")]
 pub mod cost_optimizer;
+#[cfg(feature = "server")]
+pub mod decoy_scraper;
 #[cfg(feature = "server")]
 pub mod delta_sync;
 pub mod geo_orchestrator;
@@ -24,7 +28,6 @@ pub mod orchestrator;
 #[cfg(feature = "server")]
 pub mod predictive_scaling;
 pub mod reconciler;
-#[cfg(feature = "server")]
 pub mod reseller_billing;
 #[cfg(feature = "server")]
 pub mod route_optimizer;

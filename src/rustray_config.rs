@@ -31,6 +31,15 @@ impl<'a> RustRayConfig<'a> {
     pub fn write_to<W: Write>(&self, writer: W) -> serde_json::Result<()> {
         serde_json::to_writer(writer, self)
     }
+
+    /// Calculates a SHA-256 hash of the configuration for integrity checks.
+    pub fn calculate_hash(&self) -> Result<String> {
+        use sha2::{Digest, Sha256};
+        let json = serde_json::to_string(self).map_err(|e| anyhow::anyhow!(e))?;
+        let mut hasher = Sha256::new();
+        hasher.update(json.as_bytes());
+        Ok(hex::encode(hasher.finalize()))
+    }
 }
 // ... (LogConfig, ApiConfig, PolicyConfig, InboundConfig, OutboundConfig structs remain unchanged) -> REPLACING THIS
 
@@ -131,12 +140,18 @@ impl RustRayConfigBuilder {
         #[cfg(not(feature = "server"))]
         let outbound_models: Vec<OutboundModel<'static>> = vec![];
 
-        // Fetch DNS config from DB
         #[cfg(feature = "server")]
-        let dns_config: Option<crate::models::DnsConfig> =
-            db.client.select(("sys_config", "dns")).await.ok().flatten();
+        let all_setting: Option<crate::models::AllSetting> =
+            db.client.select(("sys_config", "all")).await.ok().flatten();
 
         #[cfg(not(feature = "server"))]
+        let all_setting: Option<crate::models::AllSetting> = None;
+
+        let decoy_headers = all_setting
+            .as_ref()
+            .map(|s| s.scraped_decoy_headers.clone())
+            .unwrap_or_default();
+
         let dns_config: Option<crate::models::DnsConfig> = None;
 
         let dns_value = if let Some(dns) = dns_config {
@@ -158,10 +173,22 @@ impl RustRayConfigBuilder {
             None
         };
 
+        let nuclear_mode_active = all_setting
+            .as_ref()
+            .map(|s| s.nuclear_mode_active)
+            .unwrap_or_default();
+        let nuclear_cdn_endpoint = all_setting
+            .as_ref()
+            .map(|s| s.nuclear_cdn_endpoint.clone())
+            .unwrap_or_else(|| "ghost.cloudflare.com".to_string());
+
         Ok(Self::build_owned(
             inbound_models,
             outbound_models,
             dns_value,
+            decoy_headers,
+            nuclear_mode_active,
+            nuclear_cdn_endpoint,
         ))
     }
 
@@ -169,6 +196,9 @@ impl RustRayConfigBuilder {
         inbound_models: Vec<Inbound<'static>>,
         outbound_models: Vec<OutboundModel<'static>>,
         dns: Option<Value>,
+        scraped_decoy_headers: std::collections::HashMap<String, String>,
+        nuclear_mode_active: bool,
+        nuclear_cdn_endpoint: String,
     ) -> RustRayConfig<'static> {
         let mut inbounds = vec![];
         for model in inbound_models {
@@ -183,7 +213,44 @@ impl RustRayConfigBuilder {
 
         for model in outbound_models {
             if model.enable {
-                outbounds.push(Self::build_outbound_config_owned(model));
+                let mut config = Self::build_outbound_config_owned(model, &scraped_decoy_headers);
+
+                // Nuclear Mode Override: Force Ghost Transport (WS+TLS over CDN)
+                if nuclear_mode_active
+                    && config.protocol != "freedom"
+                    && config.protocol != "blackhole"
+                {
+                    // Update address to CDN endpoint
+                    if let Value::Object(ref mut settings) = config.settings {
+                        if let Some(servers) =
+                            settings.get_mut("servers").and_then(|v| v.as_array_mut())
+                        {
+                            for server in servers {
+                                if let Some(obj) = server.as_object_mut() {
+                                    obj.insert("address".to_string(), json!(nuclear_cdn_endpoint));
+                                }
+                            }
+                        }
+                    }
+
+                    // Force WS + TLS
+                    config.stream_settings = Some(json!({
+                        "network": "ws",
+                        "security": "tls",
+                        "tlsSettings": {
+                            "serverName": nuclear_cdn_endpoint,
+                            "allowInsecure": false
+                        },
+                        "wsSettings": {
+                            "path": "/",
+                            "headers": {
+                                "Host": nuclear_cdn_endpoint
+                            }
+                        }
+                    }));
+                }
+
+                outbounds.push(config);
             }
         }
 
@@ -245,10 +312,11 @@ impl RustRayConfigBuilder {
         inbounds.push(Self::build_api_inbound());
 
         let mut outbounds = Self::build_default_outbounds();
+        let decoy_headers = std::collections::HashMap::new();
 
         for model in outbound_models {
             if model.enable {
-                outbounds.push(Self::build_outbound_config(model));
+                outbounds.push(Self::build_outbound_config(model, &decoy_headers));
             }
         }
 
@@ -403,7 +471,8 @@ impl RustRayConfigBuilder {
             }
         }
 
-        let stream_settings = Self::build_stream_settings(&model.stream_settings);
+        let empty_headers = std::collections::HashMap::new();
+        let stream_settings = Self::build_stream_settings(&model.stream_settings, &empty_headers);
         let sniffing = serde_json::to_value(&model.sniffing).unwrap_or_default();
 
         let port = if model.protocol == crate::domain::models::InboundProtocol::Dokodemo {
@@ -421,8 +490,12 @@ impl RustRayConfigBuilder {
         )
     }
 
-    fn build_outbound_config<'a>(model: &'a OutboundModel<'a>) -> OutboundConfig<'a> {
-        let (settings, stream_settings) = Self::extract_outbound_fields(model);
+    fn build_outbound_config<'a>(
+        model: &'a OutboundModel<'a>,
+        scraped_decoy_headers: &std::collections::HashMap<String, String>,
+    ) -> OutboundConfig<'a> {
+        let (settings, stream_settings) =
+            Self::extract_outbound_fields(model, scraped_decoy_headers);
 
         OutboundConfig {
             tag: Cow::Borrowed(model.tag.as_ref()),
@@ -433,8 +506,12 @@ impl RustRayConfigBuilder {
         }
     }
 
-    fn build_outbound_config_owned(model: OutboundModel<'static>) -> OutboundConfig<'static> {
-        let (settings, stream_settings) = Self::extract_outbound_fields(&model);
+    fn build_outbound_config_owned(
+        model: OutboundModel<'static>,
+        scraped_decoy_headers: &std::collections::HashMap<String, String>,
+    ) -> OutboundConfig<'static> {
+        let (settings, stream_settings) =
+            Self::extract_outbound_fields(&model, scraped_decoy_headers);
 
         OutboundConfig {
             tag: Cow::Owned(model.tag.into_owned()),
@@ -445,7 +522,10 @@ impl RustRayConfigBuilder {
         }
     }
 
-    fn extract_outbound_fields(model: &OutboundModel<'_>) -> (Value, Option<Value>) {
+    fn extract_outbound_fields(
+        model: &OutboundModel<'_>,
+        scraped_decoy_headers: &std::collections::HashMap<String, String>,
+    ) -> (Value, Option<Value>) {
         use crate::models::OutboundSettings;
 
         let settings = match &model.settings {
@@ -463,17 +543,34 @@ impl RustRayConfigBuilder {
             if model.stream_settings.network == "" && model.stream_settings.security == "" {
                 None
             } else {
-                Some(Self::build_stream_settings(&model.stream_settings))
+                Some(Self::build_stream_settings(
+                    &model.stream_settings,
+                    scraped_decoy_headers,
+                ))
             };
 
         (settings, stream_settings)
     }
 
-    fn build_stream_settings(settings: &StreamSettings<'_>) -> Value {
+    fn build_stream_settings(
+        settings: &StreamSettings<'_>,
+        scraped_decoy_headers: &std::collections::HashMap<String, String>,
+    ) -> Value {
         let mut stream_settings = json!({
             "network": settings.network,
             "security": settings.security,
         });
+
+        if let Some(weights) = &settings.masquerade_weights {
+            stream_settings["masqueradeWeights"] =
+                serde_json::to_value(weights).unwrap_or_default();
+        }
+
+        // Inject scraped decoy headers if they exist
+        if !scraped_decoy_headers.is_empty() {
+            stream_settings["decoyHeaders"] =
+                serde_json::to_value(scraped_decoy_headers).unwrap_or_default();
+        }
 
         if settings.security == "reality" {
             if let Some(reality_settings) = &settings.reality_settings {

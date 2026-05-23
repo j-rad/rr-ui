@@ -1,4 +1,4 @@
-use log::{info, LevelFilter};
+use log::{LevelFilter, info};
 use std::ffi::CString;
 use std::fs;
 use std::io::Write;

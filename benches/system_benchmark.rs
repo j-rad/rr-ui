@@ -1,5 +1,5 @@
 // benches/system_benchmark.rs
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use serde_json::json;
 
 fn benchmark_system_serialization(c: &mut Criterion) {
@@ -12,9 +12,7 @@ fn benchmark_system_serialization(c: &mut Criterion) {
     });
 
     c.bench_function("serialize_system_state", |b| {
-        b.iter(|| {
-            serde_json::to_string(black_box(&status)).unwrap()
-        })
+        b.iter(|| serde_json::to_string(black_box(&status)).unwrap())
     });
 }
 
@@ -42,16 +40,24 @@ fn process_traffic_stats(stats: &[MockStat]) -> Vec<(String, i64, i64)> {
 fn benchmark_traffic_processing(c: &mut Criterion) {
     let mut stats = Vec::new();
     for i in 0..100 {
-        stats.push(MockStat { name: format!("inbound>>>tag{}>>>traffic>>>downlink", i), value: 1000 });
-        stats.push(MockStat { name: format!("inbound>>>tag{}>>>traffic>>>uplink", i), value: 500 });
+        stats.push(MockStat {
+            name: format!("inbound>>>tag{}>>>traffic>>>downlink", i),
+            value: 1000,
+        });
+        stats.push(MockStat {
+            name: format!("inbound>>>tag{}>>>traffic>>>uplink", i),
+            value: 500,
+        });
     }
 
     c.bench_function("process_traffic_stats", |b| {
-        b.iter(|| {
-            process_traffic_stats(black_box(&stats))
-        })
+        b.iter(|| process_traffic_stats(black_box(&stats)))
     });
 }
 
-criterion_group!(benches, benchmark_system_serialization, benchmark_traffic_processing);
+criterion_group!(
+    benches,
+    benchmark_system_serialization,
+    benchmark_traffic_processing
+);
 criterion_main!(benches);

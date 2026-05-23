@@ -5,7 +5,7 @@ use crate::ui::components::{
     card::{Card, CardContent, CardHeader, CardTitle},
     input::{Input, InputType},
 };
-#[cfg(feature = "web")]
+#[cfg(feature = "server")]
 use crate::ui::server_fns::{get_tun_config, set_tun_config};
 use dioxus::prelude::*;
 
@@ -20,7 +20,7 @@ pub fn TunDashboard() -> Element {
     use_effect(move || {
         to_owned![tun_config, is_loading, error_msg];
         spawn(async move {
-            #[cfg(feature = "web")]
+            #[cfg(feature = "server")]
             {
                 match get_tun_config().await {
                     Ok(config) => {
@@ -33,7 +33,7 @@ pub fn TunDashboard() -> Element {
                     }
                 }
             }
-            #[cfg(not(feature = "web"))]
+            #[cfg(not(feature = "server"))]
             {
                 is_loading.set(false);
             }
@@ -44,13 +44,9 @@ pub fn TunDashboard() -> Element {
         to_owned![tun_config, error_msg, success_msg];
         spawn(async move {
             // Convert signal to owned config for sending
-            // Note: In real app, we might need to deep clone or reconstruct if TunConfig has lifetimes
-            // Here assuming we can just clone the data structure if it owns its data or we convert it.
-            // The TunConfig in models has lifetimes, but server fn returns static.
-            // We need to ensure we send back correct structure.
             let config = tun_config.read().clone();
 
-            #[cfg(feature = "web")]
+            #[cfg(feature = "server")]
             {
                 match set_tun_config(config).await {
                     Ok(_) => {
@@ -145,7 +141,7 @@ pub fn TunDashboard() -> Element {
                             Input {
                                 value: config.interface.to_string(),
                                 oninput: move |e: String| {
-                                    tun_config.write().interface = std::borrow::Cow::Owned(e);
+                                    tun_config.write().interface = e;
                                 },
                                 placeholder: "tun0",
                             }
@@ -173,7 +169,7 @@ pub fn TunDashboard() -> Element {
                                 class: "w-full bg-bg border border-border rounded px-3 py-2 text-white focus:border-primary focus:ring-1 focus:ring-primary",
                                 value: config.stack.to_string(),
                                 onchange: move |e: Event<FormData>| {
-                                    tun_config.write().stack = std::borrow::Cow::Owned(e.value());
+                                    tun_config.write().stack = e.value();
                                 },
                                 option { value: "gvisor", "gVisor (User-space)" }
                                 option { value: "system", "System (Kernel-space)" }
@@ -217,10 +213,9 @@ pub fn TunDashboard() -> Element {
                             placeholder: "10.0.0.0/8\n172.16.0.0/12\n192.168.0.0/16",
                             oninput: move |e: Event<FormData>| {
                                 let val = e.value();
-                                let addresses: Vec<std::borrow::Cow<'static, str>> = val.lines()
+                                let addresses: Vec<String> = val.lines()
                                     .map(|s| s.trim().to_string())
                                     .filter(|s| !s.is_empty())
-                                    .map(std::borrow::Cow::Owned)
                                     .collect();
                                 tun_config.write().route_address = addresses;
                             }
@@ -237,10 +232,9 @@ pub fn TunDashboard() -> Element {
                             placeholder: "127.0.0.1/32\n::1/128",
                             oninput: move |e: Event<FormData>| {
                                 let val = e.value();
-                                let addresses: Vec<std::borrow::Cow<'static, str>> = val.lines()
+                                let addresses: Vec<String> = val.lines()
                                     .map(|s| s.trim().to_string())
                                     .filter(|s| !s.is_empty())
-                                    .map(std::borrow::Cow::Owned)
                                     .collect();
                                 tun_config.write().route_exclude_address = addresses;
                             }

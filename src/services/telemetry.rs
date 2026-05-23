@@ -44,6 +44,7 @@ pub struct TelemetryService {
     last_traffic: Arc<RwLock<Vec<TrafficStats>>>,
     traffic_history: Arc<RwLock<VecDeque<TrafficHistoryPoint>>>,
     rustray_client: Arc<Mutex<Option<RustRayClient>>>,
+    last_core_error: Arc<RwLock<Option<String>>>,
 }
 
 impl TelemetryService {
@@ -56,6 +57,7 @@ impl TelemetryService {
             last_traffic: Arc::new(RwLock::new(Vec::new())),
             traffic_history: Arc::new(RwLock::new(VecDeque::with_capacity(60))),
             rustray_client: Arc::new(Mutex::new(None)),
+            last_core_error: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -75,6 +77,7 @@ impl TelemetryService {
         let last_traffic = self.last_traffic.clone();
         let traffic_history = self.traffic_history.clone();
         let rustray_client = self.rustray_client.clone();
+        let last_core_error = self.last_core_error.clone();
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(1500));
@@ -185,6 +188,11 @@ impl TelemetryService {
                 if let Some(mut client) = client_opt {
                     match client.get_traffic_stats(false).await {
                         Ok(stats) => {
+                            // Clear error on success
+                            {
+                                let mut err_guard = last_core_error.write().await;
+                                *err_guard = None;
+                            }
                             let mut total_up = 0i64;
                             let mut total_down = 0i64;
 
@@ -209,10 +217,15 @@ impl TelemetryService {
                                 value: total_down,
                             });
                         }
-                        Err(_) => {
-                            // Handle offline/error
+                        Err(e) => {
+                            let err_msg = e.to_string();
+                            let mut err_guard = last_core_error.write().await;
+                            *err_guard = Some(err_msg);
                         }
                     }
+                } else {
+                     let mut err_guard = last_core_error.write().await;
+                     *err_guard = Some("Core disconnected: RustRayClient not initialized".to_string());
                 }
 
                 {
@@ -242,6 +255,11 @@ impl TelemetryService {
             .iter()
             .cloned()
             .collect::<Vec<TrafficHistoryPoint>>()
+    }
+
+    pub async fn get_last_core_error(&self) -> Option<String> {
+        let err = self.last_core_error.read().await;
+        err.clone()
     }
 }
 

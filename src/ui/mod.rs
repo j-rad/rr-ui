@@ -10,7 +10,9 @@ pub mod state;
 
 pub mod app;
 
+pub mod security;
 pub mod server_fns;
+pub mod error_bridge;
 
 pub mod theme;
 
@@ -46,4 +48,5 @@ pub async fn serve_embedded_file(path: actix_web::web::Path<String>) -> actix_we
         }
     }
 }
+pub mod heatmap;
 pub mod sleep;

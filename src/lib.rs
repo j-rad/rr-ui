@@ -1,7 +1,6 @@
 // rr-ui/src/lib.rs
 
 // Dioxus UI Module
-#[cfg(any(feature = "server", feature = "web"))]
 pub mod ui;
 
 // Domain module (shared types available for both client and server)
@@ -46,6 +45,7 @@ mod server {
     use actix_cors::Cors;
     use actix_web::dev::Service;
     use actix_web::{App, HttpServer, middleware as actix_middleware, web};
+    use dashmap::DashMap;
     use dotenv::dotenv;
     use rustls::ServerConfig;
     use rustls_pemfile::{certs, pkcs8_private_keys};
@@ -84,6 +84,16 @@ mod server {
         pub audit: crate::services::audit::SharedAuditService,
         pub log_watcher: Arc<crate::services::log_watcher::LogWatcher>,
         pub mesh_orchestrator: crate::services::mesh::SharedMeshOrchestrator,
+        pub node_streams: Arc<
+            DashMap<
+                String,
+                tokio::sync::mpsc::Sender<
+                    Result<crate::api::rustray_control::ConfigEvent, tonic::Status>,
+                >,
+            >,
+        >,
+        pub reconciler_trigger: tokio::sync::mpsc::Sender<()>,
+        pub billing_sync: Arc<crate::services::billing_delta::BillingDeltaSync>,
     }
 
     // TLS Configuration Loader
@@ -202,6 +212,12 @@ mod server {
             lw_clone.run().await;
         });
 
+        let (reconcile_tx, reconcile_rx) = tokio::sync::mpsc::channel(10);
+        let billing_sync = Arc::new(crate::services::billing_delta::BillingDeltaSync::new(
+            db_client.clone(),
+        ));
+        billing_sync.clone().start_flush_job();
+
         let app_state = Arc::new(AppState {
             db: db_client.clone(),
             user_repo,
@@ -222,6 +238,9 @@ mod server {
             mesh_orchestrator: Arc::new(crate::services::mesh::MeshOrchestrator::new(Arc::new(
                 tokio::sync::RwLock::new(db_client.clone()),
             ))),
+            node_streams: Arc::new(DashMap::new()),
+            reconciler_trigger: reconcile_tx.clone(),
+            billing_sync,
         });
         let system_state = SystemState::new();
 
@@ -245,12 +264,21 @@ mod server {
         // Broadcast channel is now used primarily for Sniffer events
         let (tx, _rx) = tokio::sync::broadcast::channel::<actix_web::web::Bytes>(100);
 
+        // Make trigger accessible to server functions
+        crate::ui::server_fns::server_state::set_reconciler_trigger(reconcile_tx.clone());
+
         // Start State Reconciler
-        // let reconciler = crate::services::reconciler::StateReconciler::new(
-        //    db_client.clone(),
-        //    orchestrator.clone(),
-        // );
-        // tokio::spawn(reconciler.run());
+        let reconciler = crate::services::reconciler::StateReconciler::new(
+            db_client.clone(),
+            orchestrator.clone(),
+            app_state.clone(),
+            reconcile_rx,
+        );
+        tokio::spawn(reconciler.run());
+
+        // Start Decoy Scraper
+        let scraper = crate::services::decoy_scraper::DecoyScraper::new(db_client.clone());
+        tokio::spawn(scraper.run());
 
         // Start Sniffer Service
         // let sniffer = crate::services::sniffer::SniffingService::new(tx.clone());
@@ -281,6 +309,27 @@ mod server {
             tokio::spawn(async move {
                 if let Err(e) = uds_manager.start_listener().await {
                     log::error!("UDS Manager failed: {}", e);
+                }
+            });
+
+            // Start gRPC Control Server
+            let grpc_state = app_state.clone();
+            let grpc_addr = format!("0.0.0.0:{}", backend_port + 1); // Use backend_port + 1 for gRPC
+            log::info!("Starting gRPC Control Server on {}", grpc_addr);
+
+            use crate::api::rustray_control::proto::control_service_server::ControlServiceServer;
+            let control_service = crate::api::rustray_control::ControlServiceImpl {
+                app_state: grpc_state,
+            };
+
+            tokio::spawn(async move {
+                let addr = grpc_addr.parse().unwrap();
+                if let Err(e) = tonic::transport::Server::builder()
+                    .add_service(ControlServiceServer::new(control_service))
+                    .serve(addr)
+                    .await
+                {
+                    log::error!("gRPC Control Server failed: {}", e);
                 }
             });
         }
@@ -347,15 +396,16 @@ mod server {
                 .app_data(web::Data::new(system_state.clone()))
                 .app_data(web::Data::new(rustray_process.clone()))
                 .app_data(web::Data::new(tx.clone()))
+                .service(
+                    web::scope("/api")
+                        .default_service(web::post().to(|req: actix_web::HttpRequest, payload: web::Payload| async move {
+                            log::info!("Server function call: {}", req.path());
+                            server_fn::actix::handle_server_fn(req, payload).await
+                        }))
+                )
                 .configure(crate::api::config);
 
-            // Dioxus Server Functions - only available with web feature
-            #[cfg(feature = "web")]
-            let app = app.service(web::resource("/api/{name}").route(web::post().to(
-                |req: actix_web::HttpRequest, payload: web::Payload| async move {
-                    server_fn::actix::handle_server_fn(req, payload).await
-                },
-            )));
+
 
             // Static file serving (SPA support)
             app.default_service(web::to(

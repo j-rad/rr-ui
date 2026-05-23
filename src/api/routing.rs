@@ -1,8 +1,8 @@
 // src/api/routing.rs
+use crate::AppState;
 use crate::models::GeneralResponse;
 use crate::repositories::routing::RoutingRepository;
-use crate::AppState;
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, web};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

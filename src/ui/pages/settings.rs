@@ -18,6 +18,12 @@ pub fn SettingsPage() -> Element {
     let mut auto_backup = use_signal(|| true);
     let mut traffic_reset_day = use_signal(|| 1i64);
 
+    // SMR Form state
+    let mut smr_pacing_rate_kbps = use_signal(|| 5000i64);
+    let mut smr_entropy_key = use_signal(|| String::new());
+    let mut smr_decoy_url = use_signal(|| String::from("https://www.apple.com"));
+    let mut smr_weird_uri = use_signal(|| String::from("/api/v1/update"));
+
     // Lifecycle State
     let mut health = use_signal(|| SystemHealth::default());
     let mut geoip_status = use_signal(|| AssetStatus::default());
@@ -50,6 +56,10 @@ pub fn SettingsPage() -> Element {
             if let Ok(settings) = &*res {
                 panel_port.set(settings.web_port as i64);
                 username.set(settings.username.clone());
+                smr_pacing_rate_kbps.set(settings.smr_pacing_rate_kbps as i64);
+                if let Some(k) = &settings.smr_entropy_key { smr_entropy_key.set(k.clone()); }
+                if let Some(u) = &settings.smr_decoy_url { smr_decoy_url.set(u.clone()); }
+                if let Some(w) = &settings.smr_weird_uri { smr_weird_uri.set(w.clone()); }
             }
         }
     });
@@ -62,6 +72,10 @@ pub fn SettingsPage() -> Element {
                     let mut new_settings = current_settings.clone();
                     new_settings.web_port = panel_port() as u16;
                     new_settings.username = username();
+                    new_settings.smr_pacing_rate_kbps = smr_pacing_rate_kbps() as u32;
+                    new_settings.smr_entropy_key = Some(smr_entropy_key());
+                    new_settings.smr_decoy_url = Some(smr_decoy_url());
+                    new_settings.smr_weird_uri = Some(smr_weird_uri());
                     match crate::ui::server_fns::update_panel_settings(new_settings).await {
                         Ok(_) => log::info!("Settings saved successfully"),
                         Err(e) => log::error!("Failed to save settings: {}", e),
@@ -222,6 +236,35 @@ pub fn SettingsPage() -> Element {
                      div { class: "space-y-6",
                         Switch { label: Some("Enable SSL/TLS".to_string()), value: ssl_enabled }
                         Switch { label: Some("Auto Backup".to_string()), value: auto_backup }
+                    }
+                }
+                
+                // ShadowMieru (SMR) Settings
+                Card {
+                    title: "ShadowMieru Transport".to_string(),
+                    div { class: "space-y-4",
+                        NumberInput {
+                            label: Some("Brutal Pacing Rate (Kbps)".to_string()),
+                            value: smr_pacing_rate_kbps,
+                            min: Some(100i64),
+                            max: Some(1000000i64),
+                            required: true,
+                        }
+                        TextInput {
+                            label: Some("Entropy Key".to_string()),
+                            value: smr_entropy_key,
+                            required: false,
+                        }
+                        TextInput {
+                            label: Some("Decoy URL Fallback".to_string()),
+                            value: smr_decoy_url,
+                            required: true,
+                        }
+                        TextInput {
+                            label: Some("Weird URI Path".to_string()),
+                            value: smr_weird_uri,
+                            required: true,
+                        }
                     }
                 }
             }

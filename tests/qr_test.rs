@@ -1,8 +1,10 @@
 // Mock context for server fn testing
 #[tokio::test]
 async fn test_subscription_link_generation() {
-    let nodes = ["vless://uuid@ip:port".to_string(),
-        "trojan://password@ip:port".to_string()];
+    let nodes = [
+        "vless://uuid@ip:port".to_string(),
+        "trojan://password@ip:port".to_string(),
+    ];
 
     // We can't call server_fn directly easily in unit tests without setting up the environment context
     // But since our server_fn has a #[cfg(feature="server")] block that uses standard logic,

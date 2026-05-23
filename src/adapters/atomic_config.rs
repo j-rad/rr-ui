@@ -341,4 +341,37 @@ mod tests {
         assert_eq!(log.entries.len(), 1);
         assert_eq!(log.entries[0].path, test_path);
     }
+
+    #[test]
+    fn test_restore_from_backup() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let writer = AtomicConfigWriter::new(temp_dir.path());
+        let test_file = temp_dir.path().join("test.json");
+
+        // Case 1: Restore when no backup exists
+        let result = writer.restore_from_backup(&test_file);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Backup file does not exist")
+        );
+
+        // Case 2: Successful restore
+        writer.write_atomic(&test_file, b"original").unwrap();
+        // Manually create backup (or use write_with_backup)
+        let backup_path = test_file.with_extension("bak");
+        fs::copy(&test_file, &backup_path).unwrap();
+
+        // Modify original
+        writer.write_atomic(&test_file, b"modified").unwrap();
+
+        // Restore
+        writer.restore_from_backup(&test_file).unwrap();
+
+        // Verify content
+        let restored_content = fs::read_to_string(&test_file).unwrap();
+        assert_eq!(restored_content, "original");
+    }
 }

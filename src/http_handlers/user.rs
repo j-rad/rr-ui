@@ -5,7 +5,7 @@
 use crate::domain::errors::DomainError;
 use crate::domain::services::UserService;
 use crate::models::GeneralResponse;
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, web};
 use serde_json::Value;
 use std::sync::Arc;
 

@@ -6,7 +6,8 @@
 //! - Routing canvas layout engine (compute_positions)
 //! - FragmentationViz fork path computation
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
 
 // ─── Import data models directly ───────────────────────────────────────────────
 // We re-declare minimal versions here to avoid pulling in the full Dioxus
@@ -17,6 +18,7 @@ use std::collections::VecDeque;
 
 // ── TraceHistory mock ─────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 struct BenchTraceEntry {
     latency_ms: f32,
     timestamp_ms: u64,

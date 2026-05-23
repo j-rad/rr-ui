@@ -4,8 +4,9 @@
 
 // Shared types - always available
 use crate::ui::server_fns::LoginRequest;
-// Server functions - only available with web feature
-#[cfg(feature = "web")]
+// Server functions: available on both the server (SSR/actix handler) and on wasm32
+// (where the #[server] macro generates an HTTP fetch stub via server_fn/browser).
+#[cfg(any(feature = "server", target_arch = "wasm32"))]
 use crate::ui::server_fns::login;
 #[allow(unused_imports)]
 use crate::ui::state::{GlobalState, NotificationType};
@@ -26,61 +27,58 @@ pub fn LoginPage() -> Element {
     let handle_login = {
         let state = state.clone();
         move |_| {
+            // Prevent double-submit
+            if loading() { return; }
+
             let mut state = state.clone();
             spawn(async move {
                 loading.set(true);
-                error_msg.set("".to_string());
+                error_msg.set(String::new());
 
                 let req = LoginRequest {
                     username: username(),
                     password: password(),
-                    mfa_code: if requires_mfa() {
-                        Some(mfa_code())
-                    } else {
-                        None
-                    },
+                    mfa_code: if requires_mfa() { Some(mfa_code()) } else { None },
                 };
 
-                // Login is only available with web feature
-                #[cfg(feature = "web")]
+                // Works on both server (SSR) and wasm32 (HTTP fetch via server_fn/browser).
+                // Falls back gracefully for any other target that ships neither feature.
+                #[cfg(any(feature = "server", target_arch = "wasm32"))]
                 {
                     match login(req).await {
                         Ok(resp) => {
                             if resp.success {
-                                // Update global state
                                 state.is_authenticated.set(true);
                                 state.auth_token.set(Some(resp.token));
-                                state.push_notification(
-                                    "Login successful",
-                                    NotificationType::Success,
-                                );
-
-                                // Redirect to dashboard
+                                state.push_notification("Login successful", NotificationType::Success);
                                 navigator.push(crate::ui::app::Route::Dashboard {});
                             } else if resp.requires_mfa {
                                 requires_mfa.set(true);
-                                // Focus MFA input would be nice here
-                                state.push_notification(
-                                    "Please enter 2FA code",
-                                    NotificationType::Info,
-                                );
+                                state.push_notification("Please enter 2FA code", NotificationType::Info);
                             } else {
+                                let tactical_err = crate::ui::error_bridge::TacticalMessage::new(
+                                    "Login Failed",
+                                    &resp.message,
+                                    "Verify credentials. If this is a new installation, try 'admin/admin'.",
+                                    crate::ui::error_bridge::Level::Error
+                                );
                                 error_msg.set(resp.message);
-                                state.push_notification("Login failed", NotificationType::Error);
+                                state.toast.tactical(tactical_err);
                             }
                         }
                         Err(e) => {
-                            error_msg.set(format!("Connection error: {}", e));
-                            state.push_notification("Connection failed", NotificationType::Error);
+                            let err_msg = format!("{}", e);
+                            let tactical_err = crate::ui::error_bridge::TacticalMessage::connection_failed(&err_msg);
+                            error_msg.set(err_msg);
+                            state.toast.tactical(tactical_err);
                         }
                     }
                 }
 
-                // Server-only builds don't support login from UI
-                #[cfg(not(feature = "web"))]
+                #[cfg(not(any(feature = "server", target_arch = "wasm32")))]
                 {
-                    let _ = req; // Suppress unused warning
-                    error_msg.set("Login not available in this build".to_string());
+                    let _ = req;
+                    error_msg.set("Login requires a server or WASM build".to_string());
                 }
 
                 loading.set(false);
@@ -132,6 +130,7 @@ pub fn LoginPage() -> Element {
 
                         form {
                             class: "space-y-5",
+                            prevent_default: "onsubmit",
                             onsubmit: handle_login,
 
                             // Username

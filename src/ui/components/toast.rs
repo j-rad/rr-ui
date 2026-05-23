@@ -35,6 +35,7 @@ pub struct Toast {
     pub id: u64,
     pub message: String,
     pub toast_type: ToastType,
+    pub tactical: Option<crate::ui::error_bridge::TacticalMessage>,
 }
 
 /// Toast store for managing notifications
@@ -51,27 +52,38 @@ impl ToastStore {
     }
 
     pub fn success(&mut self, message: impl Into<String>) {
-        self.add(message, ToastType::Success);
+        self.add(message, ToastType::Success, None);
     }
 
     pub fn error(&mut self, message: impl Into<String>) {
-        self.add(message, ToastType::Error);
+        self.add(message, ToastType::Error, None);
     }
 
     pub fn warning(&mut self, message: impl Into<String>) {
-        self.add(message, ToastType::Warning);
+        self.add(message, ToastType::Warning, None);
     }
 
     pub fn info(&mut self, message: impl Into<String>) {
-        self.add(message, ToastType::Info);
+        self.add(message, ToastType::Info, None);
     }
 
-    fn add(&mut self, message: impl Into<String>, toast_type: ToastType) {
+    pub fn tactical(&mut self, err: crate::ui::error_bridge::TacticalMessage) {
+        let message = format!("{}: {}", err.title, err.message);
+        let toast_type = match err.severity {
+            crate::ui::error_bridge::Level::Critical | crate::ui::error_bridge::Level::Error => ToastType::Error,
+            crate::ui::error_bridge::Level::Warning => ToastType::Warning,
+            crate::ui::error_bridge::Level::Info => ToastType::Info,
+        };
+        self.add(message, toast_type, Some(err));
+    }
+
+    fn add(&mut self, message: impl Into<String>, toast_type: ToastType, tactical: Option<crate::ui::error_bridge::TacticalMessage>) {
         let id = TOAST_ID.fetch_add(1, Ordering::SeqCst);
         let toast = Toast {
             id,
             message: message.into(),
             toast_type,
+            tactical,
         };
 
         self.toasts.write().push(toast);
@@ -79,10 +91,7 @@ impl ToastStore {
         // Auto-dismiss after 5 seconds
         let mut toasts = self.toasts;
         spawn(async move {
-            #[cfg(feature = "web")]
             crate::ui::sleep::sleep(5000 as u64).await;
-            #[cfg(not(feature = "web"))]
-            tokio::time::sleep(std::time::Duration::from_millis(5000)).await;
 
             toasts.write().retain(|t| t.id != id);
         });
@@ -113,6 +122,7 @@ pub fn ToastContainer() -> Element {
                     id: toast.id,
                     message: toast.message.clone(),
                     toast_type: toast.toast_type,
+                    tactical: toast.tactical.clone(),
                 }
             }
         }
@@ -120,7 +130,7 @@ pub fn ToastContainer() -> Element {
 }
 
 #[component]
-fn ToastItem(id: u64, message: String, toast_type: ToastType) -> Element {
+fn ToastItem(id: u64, message: String, toast_type: ToastType, tactical: Option<crate::ui::error_bridge::TacticalMessage>) -> Element {
     let mut store = use_context::<ToastStore>();
 
     let dismiss = move |_| {
@@ -130,17 +140,29 @@ fn ToastItem(id: u64, message: String, toast_type: ToastType) -> Element {
     let class = format!("toast {}", toast_type.css_class());
 
     rsx! {
-        div { class: "{class}",
-            div { class: "toast-icon",
-                match toast_type {
-                    ToastType::Success => rsx! { CheckCircle { size: 20 } },
-                    ToastType::Error => rsx! { XCircle { size: 20 } },
-                    ToastType::Warning => rsx! { AlertTriangle { size: 20 } },
-                    ToastType::Info => rsx! { Info { size: 20 } },
+        div { class: "{class} flex-col !items-start gap-1 p-4 min-w-[320px] max-w-md",
+            div { class: "flex items-center gap-3 w-full",
+                div { class: "toast-icon shrink-0",
+                    match toast_type {
+                        ToastType::Success => rsx! { CheckCircle { size: 20 } },
+                        ToastType::Error => rsx! { XCircle { size: 20 } },
+                        ToastType::Warning => rsx! { AlertTriangle { size: 20 } },
+                        ToastType::Info => rsx! { Info { size: 20 } },
+                    }
+                }
+                div { class: "toast-message font-semibold flex-1", "{message}" }
+                button { class: "toast-close shrink-0", onclick: dismiss, X { size: 16 } }
+            }
+            
+            if let Some(err) = tactical {
+                div { class: "pl-8 flex flex-col gap-2 mt-1",
+                    p { class: "text-xs opacity-80 leading-relaxed", "{err.message}" }
+                    div { class: "bg-black/20 p-2 rounded border border-white/5",
+                        p { class: "text-[10px] uppercase tracking-wider font-bold text-cyan-400 mb-0.5", "Tactical Suggestion" }
+                        p { class: "text-xs font-mono", "{err.suggestion}" }
+                    }
                 }
             }
-            div { class: "toast-message", "{message}" }
-            button { class: "toast-close", onclick: dismiss, X { size: 16 } }
         }
     }
 }

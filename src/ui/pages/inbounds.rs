@@ -5,7 +5,7 @@ use crate::ui::components::card::Card;
 use crate::ui::components::inbound_modal::InboundModal;
 use crate::ui::components::qr_code_modal::QrCodeModal;
 use crate::ui::server_fns::ServerFnError;
-#[cfg(feature = "web")]
+#[cfg(feature = "server")]
 use crate::ui::server_fns::{ClientOperation, list_inbounds, manage_client};
 use dioxus::prelude::*;
 
@@ -13,11 +13,11 @@ use dioxus::prelude::*;
 pub fn InboundsPage() -> Element {
     // Resources
     let inbounds_resource = use_resource(move || async move {
-        #[cfg(feature = "web")]
+        #[cfg(feature = "server")]
         {
             list_inbounds().await
         }
-        #[cfg(not(feature = "web"))]
+        #[cfg(not(feature = "server"))]
         {
             Ok::<Vec<crate::models::Inbound<'static>>, ServerFnError>(vec![])
         }
@@ -37,18 +37,17 @@ pub fn InboundsPage() -> Element {
 
     // UI state
     // Mock data for display (replace with connection_tracker/GlobalState later)
-    let mock_clients = vec![crate::ui::components::client_table::ClientData {
-        email: "user1@example.com".to_string(),
-        uuid: "uuid-1234".to_string(),
-        enabled: true,
-        total_gb: Some(100),
-        expiry_time: Some(1738415000000), // ~30 days from now
+    // UI state
+    // Mock data for display (replace with connection_tracker/GlobalState later)
+    let mock_clients = vec![Client {
+        email: Some("user1@example.com".to_string()),
+        id: Some("uuid-1234".to_string()),
+        enable: true,
+        total_flow_limit: 100,
+        expiry_time: 1738415000000, // ~30 days from now
         up: 1024 * 1024 * 500,            // 500 MB
         down: 1024 * 1024 * 1500,         // 1.5 GB
-        connection_url: Some(
-            "vless://uuid-1234@example.com:8443?type=tcp&security=tls#Primary%20VLESS".to_string(),
-        ),
-        json_config: None,
+        ..Default::default()
     }];
 
     let open_add_inbound = move |_| {
@@ -60,7 +59,7 @@ pub fn InboundsPage() -> Element {
         qr_modal_open.set(true);
     };
 
-    let handle_client_manage = move |email: String| {
+    let mut handle_client_manage = move |email: String| {
         selected_client_email.set(Some(email));
         client_details_open.set(true);
     };
@@ -235,8 +234,8 @@ pub fn InboundsPage() -> Element {
                         if expanded_inbound() == Some(1) {
                             crate::ui::components::client_table::ClientTable {
                                 clients: mock_clients.clone(),
-                                inbound_id: 1,
-                                on_manage: handle_client_manage,
+                                inbound_id: "1".to_string(),
+                                on_edit: move |client: Client| handle_client_manage(client.email.unwrap_or_default()),
                             }
                         }
                     }
@@ -281,6 +280,7 @@ pub fn InboundsPage() -> Element {
                     password: None,
                     up_speed_limit: 0,
                     down_speed_limit: 0,
+                    created_by: None,
                 }),
                 inbound: Some(crate::domain::models::Inbound {
                     id: None,
@@ -307,6 +307,8 @@ pub fn InboundsPage() -> Element {
                         mqtt_settings: None,
                         db_mimic_settings: None,
                         slipstream_settings: None,
+                        masquerade_weights: None,
+                        decoy_headers: None,
                     },
                     tag: std::borrow::Cow::Borrowed("inbound-1"),
                     sniffing: crate::domain::models::Sniffing {

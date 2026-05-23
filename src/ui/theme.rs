@@ -15,6 +15,8 @@
 //! - Level 1 (Glass): Backdrop-blur panels with subtle borders
 //! - Level 2 (HUD): Technical overlays and highlight elements
 
+pub mod assets;
+
 // ─── Color Constants ───────────────────────────────────────────────────────────
 
 /// Deep obsidian void — the absolute base layer (#020203)

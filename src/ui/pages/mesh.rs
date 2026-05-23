@@ -2,6 +2,7 @@
 //! Mesh Orchestration Dashboard
 
 use crate::models::{MeshNode, MeshNodeRole, MeshNodeStatus};
+use crate::ui::heatmap::IspHealthHeatmap;
 use dioxus::prelude::*;
 
 #[component]
@@ -59,6 +60,9 @@ pub fn MeshPage() -> Element {
                     p { class: "text-3xl font-bold text-blue-500 mt-2", "{total_clients}" }
                 }
             }
+
+            // ISP Health Heatmap
+            IspHealthHeatmap { nodes: nodes.clone() }
 
             // Node Grid
             div { class: "grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6",

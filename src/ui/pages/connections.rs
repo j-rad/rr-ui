@@ -40,10 +40,7 @@ pub fn ConnectionsPage() -> Element {
                     history_data.set(points);
                 }
 
-                #[cfg(feature = "web")]
-                crate::ui::sleep::sleep(1500 as u64).await;
-                #[cfg(not(feature = "web"))]
-                tokio::time::sleep(Duration::from_millis(1500)).await;
+                crate::ui::sleep::sleep(1500).await;
             }
         });
     });

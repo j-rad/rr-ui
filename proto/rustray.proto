@@ -29,6 +29,42 @@ service StatsService {
   rpc QueryStats (QueryStatsRequest) returns (QueryStatsResponse) {}
 }
 
+service ControlService {
+  rpc SubscribeConfig (stream SubscribeConfigRequest) returns (stream ConfigEvent) {}
+  rpc PushTelemetry (TelemetryReport) returns (TelemetryResponse) {}
+}
+
+message TelemetryReport {
+  string node_id = 1;
+  repeated UserTraffic traffic = 2;
+  SystemStats system = 3;
+}
+
+message UserTraffic {
+  string inbound_tag = 1;
+  string email = 2;
+  uint64 up = 3;
+  uint64 down = 4;
+}
+
+message SystemStats {
+  float cpu = 1;
+  float mem = 2;
+}
+
+message TelemetryResponse {
+  bool success = 1;
+}
+
+message SubscribeConfigRequest {
+  string node_id = 1;
+}
+
+message ConfigEvent {
+  string json_delta = 1;
+  string config_hash = 2;
+}
+
 message GetStatsRequest { string name = 1; bool reset = 2; }
 message GetStatsResponse { Stat stat = 1; }
 message QueryStatsRequest { string pattern = 1; bool reset = 2; }

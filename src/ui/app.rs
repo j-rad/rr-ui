@@ -3,6 +3,32 @@
 //! Main application component with router and layout.
 
 use dioxus::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, RwLock};
+use crate::ui::state::UIState;
+pub use crate::ui::error_bridge::TacticalMessage;
+use crate::ui::components::hydration_gate::HydrationGate;
+use crate::domain::proxy_core::CoreConfig;
+
+/// Synchronization status for the UI
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum SyncStatus {
+    Initial,
+    Syncing,
+    Live,
+    Stale(TacticalMessage),
+}
+
+impl Default for SyncStatus {
+    fn default() -> Self {
+        Self::Initial
+    }
+}
+
+/// Transition status to 'Live' ONLY when the core configuration is fully synced.
+pub fn on_first_grpc_delta(mut status: Signal<SyncStatus>) {
+    status.set(SyncStatus::Live);
+}
 
 use super::components::command_palette::CommandPalette;
 use super::components::sidebar::Sidebar;
@@ -11,18 +37,29 @@ use super::pages::{
     backups::BackupsPage, connections::ConnectionsPage, dashboard::DashboardPage,
     diagnostics::DiagnosticsPage, forms_demo::FormsDemoPage, inbounds::InboundsPage,
     login::LoginPage, logs::LogsPage, mesh::MeshPage, migration::MigrationPage,
-    rustray::RustRayPage, settings::SettingsPage,
+    rustray::RustRayPage, settings::SettingsPage, traffic_mimicry::TrafficMimicryPage,
 };
-use super::state::GlobalState;
 
 /// Main application component
 #[component]
 pub fn App() -> Element {
     // Initialize global state
-    let state = use_context_provider(|| GlobalState::new());
+    let state = use_context_provider(|| UIState::new());
 
     // Provide toast store specifically if components ask for it directly
     use_context_provider(|| state.toast.clone());
+
+    // Provide CoreConfig context as requested
+    use_context_provider(|| Arc::new(RwLock::new(CoreConfig {
+        log_level: crate::domain::proxy_core::LogLevel::Info,
+        inbounds: vec![],
+        outbounds: vec![],
+        routing: crate::domain::proxy_core::RoutingConfig {
+            rules: vec![],
+            domain_strategy: crate::domain::proxy_core::DomainStrategy::AsIs,
+        },
+        dns: None,
+    })));
 
     // Start background sync
     use_hook(|| {
@@ -30,120 +67,15 @@ pub fn App() -> Element {
     });
 
     rsx! {
-        // Tailwind Configuration (Must be defined BEFORE loading Tailwind)
-        script {
-            "tailwind.config = {{
-                darkMode: 'class',
-                theme: {{
-                    extend: {{
-                        colors: {{
-                            primary: '#00d4ff',
-                            'primary-hover': '#22e5ff',
-                            'primary-active': '#00b8e0',
-                            bg: {{
-                                DEFAULT: '#030712',
-                                panel: '#0a0f1a',
-                                header: '#0a0f1a',
-                                card: 'rgba(17, 24, 39, 0.75)',
-                                tertiary: '#111827',
-                            }},
-                            border: {{
-                                DEFAULT: 'rgba(71, 85, 105, 0.25)',
-                                light: 'rgba(51, 65, 85, 0.15)',
-                            }},
-                            text: {{
-                                main: 'rgba(248, 250, 252, 0.92)',
-                                secondary: 'rgba(148, 163, 184, 0.85)',
-                                muted: 'rgba(100, 116, 139, 0.7)'
-                            }},
-                            glass: {{
-                                bg: 'rgba(17, 24, 39, 0.65)',
-                                border: 'rgba(148, 163, 184, 0.08)',
-                            }},
-                            slate: {{
-                                700: '#334155',
-                                800: '#1E293B',
-                                900: '#0F172A',
-                            }},
-                            cyan: {{
-                                400: '#22e5ff',
-                                500: '#00d4ff',
-                                600: '#00b8e0',
-                            }},
-                            accent: {{
-                                purple: '#c084fc',
-                                pink: '#f472b6',
-                                orange: '#fb923c',
-                            }}
-                        }},
-                        fontFamily: {{
-                            sans: ['Inter', 'system-ui', 'sans-serif'],
-                        }},
-                        animation: {{
-                            'fade-in': 'fadeIn 0.4s ease-out',
-                            'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                            'slide-in': 'slideInRight 0.3s ease-out',
-                            'shimmer': 'shimmer 2s infinite',
-                            'glow': 'glowPulse 2s ease-in-out infinite',
-                            'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
-                            'float': 'float 3s ease-in-out infinite',
-                            'counter': 'counterUp 0.4s ease-out',
-                        }},
-                        keyframes: {{
-                            fadeIn: {{
-                                '0%': {{ opacity: '0', transform: 'translateY(8px)' }},
-                                '100%': {{ opacity: '1', transform: 'translateY(0)' }},
-                            }},
-                            slideUp: {{
-                                '0%': {{ opacity: '0', transform: 'translateY(24px) scale(0.96)' }},
-                                '100%': {{ opacity: '1', transform: 'translateY(0) scale(1)' }},
-                            }},
-                            slideInRight: {{
-                                '0%': {{ opacity: '0', transform: 'translateX(24px)' }},
-                                '100%': {{ opacity: '1', transform: 'translateX(0)' }},
-                            }},
-                            shimmer: {{
-                                '0%': {{ transform: 'translateX(-100%)' }},
-                                '100%': {{ transform: 'translateX(100%)' }},
-                            }},
-                            glowPulse: {{
-                                '0%, 100%': {{ boxShadow: '0 0 8px rgba(0, 212, 255, 0.3)' }},
-                                '50%': {{ boxShadow: '0 0 24px rgba(0, 212, 255, 0.5), 0 0 40px rgba(0, 212, 255, 0.3)' }},
-                            }},
-                            pulseGlow: {{
-                                '0%, 100%': {{ opacity: '1', transform: 'scale(1)' }},
-                                '50%': {{ opacity: '0.7', transform: 'scale(1.05)' }},
-                            }},
-                            float: {{
-                                '0%, 100%': {{ transform: 'translateY(0)' }},
-                                '50%': {{ transform: 'translateY(-6px)' }},
-                            }},
-                            counterUp: {{
-                                '0%': {{ opacity: '0', transform: 'translateY(8px)' }},
-                                '100%': {{ opacity: '1', transform: 'translateY(0)' }},
-                            }}
-                        }},
-                        backdropBlur: {{
-                            xs: '2px',
-                            xl: '20px',
-                        }},
-                        boxShadow: {{
-                            'glow': '0 0 20px rgba(0, 212, 255, 0.35)',
-                            'glow-lg': '0 0 40px rgba(0, 212, 255, 0.4)',
-                        }}
-                    }},
-                }},
-            }};"
-        }
-        // Tailwind CSS CDN
-        script { src: "https://cdn.tailwindcss.com?plugins=forms,container-queries" }
-        // Google Fonts
-        link { href: "https://fonts.googleapis.com", rel: "preconnect" }
-        link { href: "https://fonts.gstatic.com", rel: "preconnect", crossorigin: "true" }
-        link { href: "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap", rel: "stylesheet" }
-        link { href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap", rel: "stylesheet" }
+        // Local CSS and Embedded Tailwind
+        style { "{crate::ui::theme::assets::LAYOUT_CSS}" }
+        style { "{crate::ui::theme::assets::INTER_FONT_CSS}" }
+        style { "{crate::ui::theme::assets::TAILWIND_CSS}" }
+        // All fonts and styles served from binary — zero network requests
 
-        Router::<Route> {}
+        HydrationGate {
+            Router::<Route> {}
+        }
     }
 }
 
@@ -176,6 +108,8 @@ pub enum Route {
         Migration {},
         #[route("/panel/diagnostics")]
         Diagnostics {},
+        #[route("/panel/traffic-mimicry")]
+        TrafficMimicry {},
     #[end_layout]
     
     #[route("/login")]
@@ -188,7 +122,7 @@ pub enum Route {
 /// Main panel layout with sidebar and auth check
 #[component]
 fn PanelLayout() -> Element {
-    let state = use_context::<GlobalState>();
+    let state = use_context::<UIState>();
     let sidebar_collapsed = state.sidebar_collapsed;
     let theme = state.theme;
     let navigator = use_navigator();
@@ -309,4 +243,10 @@ fn Migration() -> Element {
 #[component]
 fn Diagnostics() -> Element {
     rsx! { DiagnosticsPage {} }
+}
+
+/// Traffic Mimicry page wrapper
+#[component]
+fn TrafficMimicry() -> Element {
+    rsx! { TrafficMimicryPage {} }
 }

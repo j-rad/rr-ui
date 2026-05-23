@@ -1,9 +1,9 @@
 use actix_web::{
+    Error, HttpResponse,
     body::{BoxBody, MessageBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpResponse,
 };
-use futures::future::{ok, LocalBoxFuture, Ready};
+use futures::future::{LocalBoxFuture, Ready, ok};
 use std::rc::Rc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
@@ -79,10 +79,14 @@ where
         // This effectively blocks root / and anything else.
         // We should ensure strict adherence.
 
-        // Check if path starts with secret_path OR is an API call
-        // Also whitelist static assets path /_app/ and favicon
+        // Check if path starts with secret_path OR is an API/asset call
+        // Whitelist: secret panel path, API endpoints, WASM bundle, static assets
         if path.starts_with(secret_path.as_str())
-            || path.starts_with("/_app/")
+            || path.starts_with("/api/")
+            || path.starts_with("/wasm/")
+            || path.starts_with("/assets/")
+            || path == "/layout.css"
+            || path == "/tailwind.css"
             || path == "/favicon.ico"
         {
             return Box::pin(async move {
